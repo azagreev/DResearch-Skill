@@ -56,7 +56,7 @@ Heartbeat каждые 30 сек + checkpoint после каждого phase ga
 ## Instructions: 6-Phase Workflow
 
 ### Phase 0: Task Analysis & Route Selection
-**→ Загрузи: `strategy_guide.md`**
+**→ Загрузи: `references/strategy_guide.md`**
 
 1. **Классифицируй запрос** через 3-layer router:
    - Layer 1: Keyword matching (O(1)) — по хеш-таблице триггеров
@@ -75,9 +75,9 @@ Heartbeat каждые 30 сек + checkpoint после каждого phase ga
    - Deep (3-5 ч, 20-30 subtasks) → expert research
    - Exhaustive (5+ ч, 30-50 subtasks) → publication-ready
 
-4. **Сформулируй Acceptance Criteria** по SMART-R шаблону (см. `acceptance_framework.md`).
+4. **Сформулируй Acceptance Criteria** по SMART-R шаблону (см. `references/acceptance_framework.md`).
 
-**Lazy loading:** Загружай `strategy_guide.md` только при необходимости уточнить sub-route (A1–A4, B1–B4) или правила parallel execution.
+**Lazy loading:** Загружай `references/strategy_guide.md` только при необходимости уточнить sub-route (A1–A4, B1–B4) или правила parallel execution.
 
 **Checkpoint:** AC определены, Route выбран, бюджет оценён.
 
@@ -112,7 +112,7 @@ Heartbeat каждые 30 сек + checkpoint после каждого phase ga
 ---
 
 ### Phase 2: Collection
-**→ Загрузи: `tool_matrix.md`, `cost_matrix_full.md`**
+**→ Загрузи: `references/tool_matrix.md`, `references/cost_matrix_full.md`**
 
 1. **Выполняй сбор данных по tool hierarchy:**
 
@@ -131,7 +131,7 @@ Layer 4 (Premium):  Firecrawl API, Jina DeepSearch, Browserbase
 
 3. **Применяй cost estimation:**
    - Оцени стоимость ДО выполнения
-   - Следи за budget guardrails (см. `cost_matrix_full.md`)
+   - Следи за budget guardrails (см. `references/cost_matrix_full.md`)
    - При приближении к лимиту — graceful degradation
 
 4. **Используй structured data sources первыми** (бесплатно, быстро):
@@ -146,7 +146,7 @@ Layer 4 (Premium):  Firecrawl API, Jina DeepSearch, Browserbase
 ---
 
 ### Phase 3: Verification
-**→ Загрузи: `factcheck_system.md`**
+**→ Загрузи: `references/factcheck_system.md`**
 
 Запусти **FactCheck Agent (FCA)** — независимый валидатор:
 
@@ -209,7 +209,7 @@ Floor: 1, Ceiling: 5
 ---
 
 ### Phase 5: Output Formatting
-**→ Загрузи: `output_formats.md`**
+**→ Загрузи: `references/output_formats.md`**
 
 Выбери формат по типу запроса:
 
@@ -257,7 +257,7 @@ Floor: 1, Ceiling: 5
 ---
 
 ### Phase 6: Acceptance Validation
-**→ Загрузи: `acceptance_framework.md`**
+**→ Загрузи: `references/acceptance_framework.md`**
 
 Проверь отчёт по 5 Quality Gates:
 
@@ -282,7 +282,7 @@ Floor: 1, Ceiling: 5
 
 ## Tool Router
 
-> **Полная матрица:** `tool_matrix.md` | **Cost-матрица:** `cost_matrix_full.md`
+> **Полная матрица:** `references/tool_matrix.md` | **Cost-матрица:** `references/cost_matrix_full.md`
 
 ### Иерархия (4 Tier)
 
@@ -327,7 +327,7 @@ Total = Base_LLM + (Scrape_Qty × Cost_Per_Page) + (CAPTCHA_Qty × Solve_Cost)
 
 ## Source Authority
 
-> **Полный фреймворк:** `source_authority_framework.md`
+> **Полный фреймворк:** `references/source_authority_framework.md`
 
 ### Tier Hierarchy
 
@@ -377,7 +377,7 @@ Range: 0.00 – 1.00 | S: ≥0.90 | A: 0.75–0.89 | B: 0.55–0.74 | C: 0.35–
 
 ## FactCheck Agent
 
-> **Полная документация:** `factcheck_system.md`
+> **Полная документация:** `references/factcheck_system.md`
 
 ### 6 Стратегий Проверки
 
@@ -424,7 +424,7 @@ STAGE 7: REPORT → финальный отчёт с метриками
 
 ## Quality Gates
 
-> **Детали:** `acceptance_framework.md`
+> **Детали:** `references/acceptance_framework.md`
 
 ### Gate 1: Post-Collection
 - Sources ≥ N (по scope), diversity ≥ 4 типа
@@ -472,7 +472,7 @@ A: ≥85 proceed | B: 70–85 minor gaps | C: 55–70 re-search | D: 40–55 ful
 
 ## Output Formats
 
-> **Полная спецификация:** `output_formats.md`
+> **Полная спецификация:** `references/output_formats.md`
 
 ### 6 Core Formats
 
@@ -524,14 +524,14 @@ CloakBrowser (prevent) → CapSolver (AI, 2-5s, $0.80/1K)
 |------|----------|
 | `AGENT.MD` | Heartbeat/checkpoint protocol — восстановление после прерываний |
 | `SKILL.master.md` | Полная документация (lazy loading) — все модули в деталях |
-| `tool_matrix.md` | Полная матрица инструментов — все tools с атрибутами, fallback chains, rate limits |
-| `strategy_guide.md` | Стратегии сбора — Route A/B/C/D, depth levels, parallelization rules, cost budgeting |
+| `references/tool_matrix.md` | Полная матрица инструментов — все tools с атрибутами, fallback chains, rate limits |
+| `references/strategy_guide.md` | Стратегии сбора — Route A/B/C/D, depth levels, parallelization rules, cost budgeting |
 | `references/decomposition_guide.md` | Декомпозиция задач — atomic subtasks, dependency types, graph notation, patterns |
-| `acceptance_framework.md` | Критерии приёмки — AC templates, quality gates, RCA protocol, re-search loop, confidence scoring |
-| `output_formats.md` | Форматы вывода — 6 форматов с триггерами, citation system, confidence visualization |
-| `factcheck_system.md` | Система фактчеккинга — 6 стратегий, 6 категорий, FCA workflow, метрики |
-| `source_authority_framework.md` | Авторитетность источников — Tier S/A/B/C/D, domain-specific maps, composite score formula |
-| `cost_matrix_full.md` | Cost-матрица — tier system, pricing, estimation calculator, optimization tips, hidden costs |
+| `references/acceptance_framework.md` | Критерии приёмки — AC templates, quality gates, RCA protocol, re-search loop, confidence scoring |
+| `references/output_formats.md` | Форматы вывода — 6 форматов с триггерами, citation system, confidence visualization |
+| `references/factcheck_system.md` | Система фактчеккинга — 6 стратегий, 6 категорий, FCA workflow, метрики |
+| `references/source_authority_framework.md` | Авторитетность источников — Tier S/A/B/C/D, domain-specific maps, composite score formula |
+| `references/cost_matrix_full.md` | Cost-матрица — tier system, pricing, estimation calculator, optimization tips, hidden costs |
 | `references/bypass_paywall_research.md` | Обход paywall (gray area) — методы доступа к закрытому контенту |
 | `LEGAL_METHODS.md` | Легальные методы доступа — open access, library access, FOIA, авторские запросы |
 | `references/HOOK_MIDDLEWARE.md` | Hook-driven middleware — PreToolUse/PostToolUse hooks, blocking validation, async observation, cost tracking, quality gates |

@@ -28,8 +28,8 @@
 npx skills add <path-to-repo>/plugins/deep-research-skill
 
 # Example with local clone:
-git clone https://github.com/deep-research-skill/deep-research-skill.git
-npx skills add ./deep-research-skill/plugins/deep-research-skill
+git clone https://github.com/azagreev/DResearch-Skill.git
+npx skills add ./DResearch-Skill/plugins/deep-research-skill
 ```
 
 ### Installation via Claude Marketplace

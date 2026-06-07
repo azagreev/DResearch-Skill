@@ -53,10 +53,10 @@
     "references/browserbase_research.md",
     "references/prompt_master_research.md"
   ],
-  "repository_url": "https://github.com/deep-research-skill/deep-research-skill",
-  "documentation_url": "https://github.com/deep-research-skill/deep-research-skill/blob/main/README.md",
-  "changelog_url": "https://github.com/deep-research-skill/deep-research-skill/blob/main/CHANGELOG.md",
-  "install_command": "npx skills add <repo>/plugins/deep-research-skill",
+  "repository_url": "https://github.com/azagreev/DResearch-Skill",
+  "documentation_url": "https://github.com/azagreev/DResearch-Skill/blob/main/README.md",
+  "changelog_url": "https://github.com/azagreev/DResearch-Skill/blob/main/CHANGELOG.md",
+  "install_command": "npx skills add azagreev/DResearch-Skill/plugins/deep-research-skill",
   "language": "ru",
   "confidence": {
     "overall": 0.95,

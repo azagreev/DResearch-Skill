@@ -10,8 +10,8 @@
 
 ```bash
 # Clone from GitHub
-git clone https://github.com/deep-research-skill/deep-research-skill.git
-cd deep-research-skill
+git clone https://github.com/azagreev/DResearch-Skill.git
+cd DResearch-Skill
 
 # Or download and extract the archive
 # unzip deep-research-skill.zip && cd deep-research-skill

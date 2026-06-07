@@ -57,4 +57,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Browserbase cloud browser
 - Prompt engineering master techniques
 
-[2.0.0]: https://github.com/deep-research-skill/deep-research-skill/releases/tag/v2.0.0
+[2.0.0]: https://github.com/azagreev/DResearch-Skill/releases/tag/v2.0.0
