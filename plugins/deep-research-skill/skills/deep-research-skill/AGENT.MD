@@ -142,10 +142,14 @@ class Heartbeat:
         md += f"- Confidence: {self.confidence}\n"
         return md
 
-    def write(self, base_dir: str = "./research_output/heartbeats") -> str:
-        Path(base_dir).mkdir(parents=True, exist_ok=True)
+    def write(self, base_dir: str | None = None) -> str:
+        # Абсолютный путь (.resolve()) вместо относительного "./": относительный резолвится
+        # от cwd и на Windows/Claude Code может уехать не туда — тогда при recovery heartbeat
+        # молча не находится. Корень прогона фиксируется один раз на старте сессии.
+        root = (Path(base_dir) if base_dir else Path.cwd() / "research_output" / "heartbeats").resolve()
+        root.mkdir(parents=True, exist_ok=True)
         ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        path = f"{base_dir}/heartbeat_{ts}_{self.agent_role}.md"
+        path = f"{root}/heartbeat_{ts}_{self.agent_role}.md"
         with open(path, "w") as f:
             f.write(self.to_markdown())
         return path
@@ -501,7 +505,7 @@ class GateCostTracker:
 
 ### 4.2 FCA Heartbeat (отдельный от основного)
 
-FCA пишет собственный heartbeat-файл с интервалом **30 секунд** (независимо от Research Agent).
+FCA пишет собственный heartbeat-файл с тем же адаптивным интервалом, что и основной агент (см. §1.2), независимо от Research Agent.
 
 ```markdown
 # Heartbeat: <timestamp>
@@ -1263,6 +1267,7 @@ TIMEOUT HIERARCHY:
 | Task | > 1.5× estimate | WARN → re-scope → or extend with human approval |
 | Message ACK | > 30 sec | Retry × 3 → if still no ACK → mark recipient UNAVAILABLE |
 | Feedback loop | > 5 min/iteration | Force continue with best-effort corrections |
+| Quality gate | > 30 sec | WARN + proceed с пометкой `degraded` + checkpoint (НЕ молчаливый stop) |
 
 ```python
 class TimeoutManager:

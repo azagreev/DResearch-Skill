@@ -1031,7 +1031,11 @@ class ToolExecutor:
             self.elapsed_time
         )
         if budget_status["should_escalate"]:
-            raise BudgetExceededException(budget_status["warnings"])
+            # Graceful degradation вместо жёсткого abort (раньше здесь был
+            # raise BudgetExceededException, терявший весь прогон при достижении ceiling).
+            # Прекращаем эскалацию tier'ов и сигналим оркестратору финализировать отчёт
+            # по уже собранному (deliver partial-with-confidence — см. SKILL.md §8 и §1.8).
+            return Result.degraded(reason="budget_ceiling", warnings=budget_status["warnings"])
         
         # Guardrail 2: No retry loops
         url = tool_call.target_url

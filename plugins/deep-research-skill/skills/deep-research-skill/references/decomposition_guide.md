@@ -1760,10 +1760,7 @@ Stage 5: FINALIZATION
 ## Confidence: HIGH (no blockers expected)
 ```
 
-Частота heartbeat:
-- 4-8 часов исследование: каждые 2 часа
-- 8-24 часа: каждый час
-- >24 часа: каждые 30 минут + при каждом checkpoint
+Частота heartbeat — по единой таблице в AGENT.MD §1.2 (адаптивный интервал по длительности задачи; watchdog = 2× интервала). Плюс обязательный heartbeat при каждой смене этапа / checkpoint.
 
 ### 7.8 Checkpoint Directory Structure
 

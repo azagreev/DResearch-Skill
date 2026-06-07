@@ -1,6 +1,6 @@
 ---
 name: deep-research-master
-version: "2.0.0"
+version: "0.1.0"
 runtime: multi-platform
 requires_connector: true
 categories: [research, analysis, web-scraping, synthesis, verification]
@@ -16,7 +16,7 @@ description: >
 
 # SKILL.master.md — Deep Research Skill: Полная Мастер-Документация
 
-> **Версия:** 2.0.0 | **Дата:** 2025-01-28 | **Статус:** Production-Ready
+> **Версия:** 0.1.0 | **Дата:** 2026-06-07 | **Статус:** Testing release
 >
 > Этот документ — единый источник truth (SSOT) для всех компонентов Deep Research Skill.
 > Он объединяет результаты 17 исследовательских работ, проведённых в январе-июне 2025/2026.
@@ -673,7 +673,11 @@ class ToolExecutor:
             self.elapsed_time
         )
         if budget_status["should_escalate"]:
-            raise BudgetExceededException(budget_status["warnings"])
+            # Graceful degradation вместо жёсткого abort (раньше здесь был
+            # raise BudgetExceededException, терявший весь прогон при достижении ceiling).
+            # Прекращаем эскалацию tier'ов и сигналим оркестратору финализировать отчёт
+            # по уже собранному (deliver partial-with-confidence — см. SKILL.md §8 и §1.8).
+            return Result.degraded(reason="budget_ceiling", warnings=budget_status["warnings"])
         
         # Guardrail 2: No retry loops
         url = tool_call.target_url
@@ -2243,7 +2247,7 @@ Recovery:
 
 ```yaml
 Protocol_Constants:
-  heartbeat_interval_sec: 300
+  heartbeat_interval_sec: 300   # дефолт; адаптивный интервал по AGENT.MD §1.2 имеет приоритет
   checkpoint_interval_sec: 600
   max_tool_retry: 3
   circuit_breaker_threshold: 3
@@ -2252,7 +2256,7 @@ Protocol_Constants:
   budget_critical_pct: 90
   max_recheck_iterations: 3
   fca_coverage_threshold: 0.75
-  quality_gate_timeout_sec: 30
+  quality_gate_timeout_sec: 30   # при превышении — WARN+proceed+checkpoint, не stop (см. AGENT.MD Timeout Actions)
   session_timeout_hours: 8
   max_parallel_agents: 20
 ```
@@ -2599,7 +2603,7 @@ license: Apache-2.0
 compatibility: Requires internet access, Python 3.10+
 metadata:
   author: deep-research-team
-  version: "2.0.0"
+  version: "0.1.0"
   category: research
   tags: [research, analysis, web-scraping, synthesis, fact-check]
 allowed-tools: Bash Read Write Fetch Edit web_search browser_visit

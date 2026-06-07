@@ -819,7 +819,7 @@ Low-stakes → быстрая проверка (2 стратегии)
 ### 6.4. Recovery & Heartbeat (вдохновлено Life Planning Coach)
 
 ```
-HEARTBEAT_INTERVAL: 30 секунд
+HEARTBEAT_INTERVAL: адаптивный по длительности задачи (см. AGENT.MD §1.2)
 MAX_SOURCE_WAIT_TIME: 30 секунд (per source)
 MAX_TOTAL_TIME: 10 минут (per batch)
 

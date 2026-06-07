@@ -11,6 +11,9 @@ desktop.ini
 *.tmp
 _dr_stage/
 
+# Research runtime artifacts (heartbeats, checkpoints, costs, audit)
+research_output/
+
 # Secrets / local env
 .env
 .env.local

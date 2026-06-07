@@ -2,7 +2,7 @@
 
 > **Production-ready навык глубокого исследования для Claude Code.** Многофазный workflow с cost-first выполнением, evidence-based отчётами, anti-hallucination протоколом и прозрачным confidence scoring.
 
-**Версия:** 2.0.0 | **Лицензия:** MIT | **Язык:** русский
+**Версия:** 0.1.0 | **Лицензия:** MIT | **Язык:** русский
 **Автор:** Andrey Zagreev | **Обратная связь:** [@zagreev](https://t.me/zagreev)
 
 ---
@@ -15,7 +15,7 @@
 - **Anti-Hallucination протокол**: zero tolerance — FactCheck Agent ветирует каждый факт
 - **4 уровня глубины**: Quick (30 мин) → Standard (1–2 ч) → Deep (3–5 ч) → Exhaustive (5+ ч)
 - **Confidence Scoring**: шкала 1–5 с визуальными индикаторами для каждого утверждения
-- **Checkpoint Recovery**: heartbeat каждые 30 сек — без потери прогресса
+- **Checkpoint Recovery**: адаптивный heartbeat (2–10 мин) + checkpoint на каждом gate — откат к последнему gate, а не к нулю
 - **50+ инструментов**: полная матрица с рейтингами cost/quality/authority
 
 ---
@@ -84,7 +84,7 @@ SKILL.md (точка входа)
   └── Phase 6: Приёмка           → references/acceptance_framework.md
 
 AGENT.MD (слой оркестрации)
-  ├── Heartbeat Protocol (каждые 30 сек)
+  ├── Heartbeat Protocol (адаптивный интервал, §1.2)
   ├── Checkpoint Recovery
   ├── Quality Gates
   └── Cost Tracking
@@ -232,5 +232,5 @@ MIT License — см. [LICENSE](LICENSE).
 ---
 
 <p align="center">
-  <b>Deep Research Skill v2.0.0</b> · Автор: Andrey Zagreev · <a href="https://t.me/zagreev">@zagreev</a>
+  <b>Deep Research Skill v0.1.0</b> · Автор: Andrey Zagreev · <a href="https://t.me/zagreev">@zagreev</a>
 </p>
