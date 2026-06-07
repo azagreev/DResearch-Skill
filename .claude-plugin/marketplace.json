@@ -1,67 +1,17 @@
 {
-  "id": "deep-research-skill",
-  "name": "Deep Research Skill",
-  "version": "2.0.0",
-  "description": "Production-ready deep research skill for Claude Desktop. Multi-phase workflow: task analysis, decomposition, multi-source collection, fact-checking, synthesis, and structured output. Features cost-first execution, evidence-based reporting, anti-hallucination protocols, and transparent confidence scoring.",
-  "author": "Deep Research Skill Team",
-  "license": "MIT",
-  "category": "research",
-  "tags": [
-    "research",
-    "deep-research",
-    "analysis",
-    "fact-checking",
-    "competitive-analysis",
-    "market-research",
-    "due-diligence",
-    "multi-agent"
-  ],
-  "min_claude_version": "4.6",
-  "runtime": "claude.ai",
-  "requires_mcp": [
-    "browserbase (optional)",
-    "file-system"
-  ],
-  "pricing": {
-    "model": "free",
-    "details": "Open source, self-hosted. API costs for external tools (Jina, Browserbase, etc.) are user-responsibility."
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "deep-research-skill",
+  "description": "Deep Research Skill — production-ready плагин для глубокого исследования в Claude Code: анализ задачи, декомпозиция, мультисорс-сбор, фактчекинг, синтез и структурированный отчёт с citations и confidence scoring.",
+  "owner": {
+    "name": "Andrey Zagreev",
+    "url": "https://github.com/azagreev"
   },
-  "entry_point": "plugins/deep-research-skill/SKILL.md",
-  "lazy_loaded_docs": [
-    "SKILL.master.md",
-    "AGENT.MD",
-    "LEGAL_METHODS.md",
-    "CAPTCHA_MODULE.md",
-    "references/tool_matrix.md",
-    "references/strategy_guide.md",
-    "references/decomposition_guide.md",
-    "references/acceptance_framework.md",
-    "references/output_formats.md",
-    "references/factcheck_system.md",
-    "references/source_authority_framework.md",
-    "references/cost_matrix_full.md",
-    "references/competitive_landscape.md"
-  ],
-  "research_docs": [
-    "references/jina_reader_research.md",
-    "references/bypass_paywall_research.md",
-    "references/ecc_research.md",
-    "references/modelsdev_research.md",
-    "references/captcha_research.md",
-    "references/academic_skills_research.md",
-    "references/skill_marketplace_research.md",
-    "references/browserbase_research.md",
-    "references/prompt_master_research.md"
-  ],
-  "repository_url": "https://github.com/azagreev/DResearch-Skill",
-  "documentation_url": "https://github.com/azagreev/DResearch-Skill/blob/main/README.md",
-  "changelog_url": "https://github.com/azagreev/DResearch-Skill/blob/main/CHANGELOG.md",
-  "install_command": "npx skills add azagreev/DResearch-Skill/plugins/deep-research-skill",
-  "language": "ru",
-  "confidence": {
-    "overall": 0.95,
-    "completeness": 0.95,
-    "accuracy": 0.95,
-    "consistency": 0.98
-  }
+  "plugins": [
+    {
+      "name": "deep-research-skill",
+      "source": "./plugins/deep-research-skill",
+      "description": "Глубокое исследование с верификацией фактов: 6-фазный workflow, cost-first выбор инструментов, citations и confidence scoring. Активируется по запросам «проведи исследование», «deep research», «анализ рынка», «конкурентный анализ». Язык: русский.",
+      "category": "research"
+    }
+  ]
 }

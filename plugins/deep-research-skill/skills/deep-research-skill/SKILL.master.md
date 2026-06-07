@@ -2683,23 +2683,23 @@ git clone https://github.com/your-org/deep-research-skill.git
 
 | # | Document | Purpose | Key Insights |
 |---|----------|---------|--------------|
-| 1 | `tool_matrix.md` | Полная матрица 30+ инструментов | 3D Cost Matrix, 4 tiers, fallback chains |
-| 2 | `strategy_guide.md` | 4 Routes + 13 Sub-routes | Route A/B/C/D, 4 Depth Levels, Budget System |
+| 1 | `references/tool_matrix.md` | Полная матрица 30+ инструментов | 3D Cost Matrix, 4 tiers, fallback chains |
+| 2 | `references/strategy_guide.md` | 4 Routes + 13 Sub-routes | Route A/B/C/D, 4 Depth Levels, Budget System |
 | 3 | `references/decomposition_guide.md` | Декомпозиция задач | 8 типов subtasks, DRGN, 6 паттернов |
-| 4 | `acceptance_framework.md` | 5 Quality Gates | G1-G5 с полными чеклистами |
-| 5 | `output_formats.md` | 6 форматов вывода | Templates, progressive disclosure, metadata schema |
-| 6 | `factcheck_system.md` | FCA спецификация | 6 категорий, 6 стратегий, workflow, API |
-| 7 | `source_authority_framework.md` | Tier S/A/B/C/D | 6 доменов, conflict resolution |
-| 8 | `cost_matrix_full.md` | Полная cost matrix | Tool-by-tool pricing, latency |
-| 9 | `competitive_landscape.md` | Конкурентный анализ | 11+ конкурентов, 7 измерений |
-| 10 | `jina_reader_research.md` | Jina Reader/Search/DeepSearch | Paywall bypass, API patterns |
+| 4 | `references/acceptance_framework.md` | 5 Quality Gates | G1-G5 с полными чеклистами |
+| 5 | `references/output_formats.md` | 6 форматов вывода | Templates, progressive disclosure, metadata schema |
+| 6 | `references/factcheck_system.md` | FCA спецификация | 6 категорий, 6 стратегий, workflow, API |
+| 7 | `references/source_authority_framework.md` | Tier S/A/B/C/D | 6 доменов, conflict resolution |
+| 8 | `references/cost_matrix_full.md` | Полная cost matrix | Tool-by-tool pricing, latency |
+| 9 | `references/competitive_landscape.md` | Конкурентный анализ | 11+ конкурентов, 7 измерений |
+| 10 | `references/jina_reader_research.md` | Jina Reader/Search/DeepSearch | Paywall bypass, API patterns |
 | 11 | `references/bypass_paywall_research.md` | Обход paywall | Только LEGAL_METHODS |
-| 12 | `ecc_research.md` | ECC extensions | EFF Storage Search, Archive.today |
-| 13 | `modelsdev_research.md` | Мульти-модельный роутер | 4 tiers, fallback chains, cost budgeting |
-| 14 | `captcha_research.md` | CAPTCHA solving | SolveCaptcha, fallback chain, легальность |
-| 15 | `academic_skills_research.md` | ARS паттерны | 5-type hallucination taxonomy, anti-hallucination |
-| 16 | `skill_marketplace_research.md` | Дистрибуция | TrendShift, Claude Code, GPT Store |
-| 17 | `browserbase_research.md` | Browserbase Skills | CDP tracing, cloud browsers, stealth |
+| 12 | `references/ecc_research.md` | ECC extensions | EFF Storage Search, Archive.today |
+| 13 | `references/modelsdev_research.md` | Мульти-модельный роутер | 4 tiers, fallback chains, cost budgeting |
+| 14 | `references/captcha_research.md` | CAPTCHA solving | SolveCaptcha, fallback chain, легальность |
+| 15 | `references/academic_skills_research.md` | ARS паттерны | 5-type hallucination taxonomy, anti-hallucination |
+| 16 | `references/skill_marketplace_research.md` | Дистрибуция | TrendShift, Claude Code, GPT Store |
+| 17 | `references/browserbase_research.md` | Browserbase Skills | CDP tracing, cloud browsers, stealth |
 | 18 | `references/HOOK_MIDDLEWARE.md` | Hook-Driven Middleware | PreToolUse/PostToolUse hooks, blocking validation, cost tracking, quality gates |
 | 19 | `references/PLATFORM_DISTRIBUTION.md` | Multi-Platform Distribution | Claude Code, Claude.ai, Codex CLI, Copilot, Cursor, Windsurf |
 

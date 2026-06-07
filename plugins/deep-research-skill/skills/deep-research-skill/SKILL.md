@@ -1,7 +1,7 @@
 ---
 name: deep-research-skill
 version: 2.0.0
-author: Deep Research Skill Team
+author: Andrey Zagreev (https://t.me/zagreev)
 last_updated: 2026-06-07
 description: |
   Выполняй глубокое исследование по заданной задаче. Собирай информацию

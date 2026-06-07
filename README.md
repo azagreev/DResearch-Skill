@@ -1,262 +1,236 @@
-# Deep Research Skill
+# 🔍 Deep Research Skill
 
-> Production-ready deep research skill for Claude Desktop. Multi-phase workflow with cost-first execution, evidence-based reporting, and anti-hallucination protocols.
+> **Production-ready навык глубокого исследования для Claude Code.** Многофазный workflow с cost-first выполнением, evidence-based отчётами, anti-hallucination протоколом и прозрачным confidence scoring.
 
-**Version:** 2.0.0 | **License:** MIT | **Language:** Russian
-
----
-
-## Features
-
-- **6-Phase Workflow**: Task Analysis → Decomposition → Collection → Fact-Checking → Synthesis → Output
-- **Cost-First Execution**: 4-tier tool hierarchy — start free, escalate only when necessary
-- **Evidence-Based Reporting**: Every claim has a citation, every source has a tier
-- **Anti-Hallucination Protocol**: Zero tolerance — FactCheck Agent vets every fact
-- **4 Depth Levels**: Quick (30 min) → Standard (1-2h) → Deep (3-5h) → Exhaustive (5+h)
-- **Confidence Scoring**: 1-5 scale with visual indicators for every claim
-- **Checkpoint Recovery**: Heartbeat every 30s — never lose progress
-- **50+ Tools**: Comprehensive tool matrix with cost/quality/authority ratings
+**Версия:** 2.0.0 | **Лицензия:** MIT | **Язык:** русский
+**Автор:** Andrey Zagreev | **Обратная связь:** [@zagreev](https://t.me/zagreev)
 
 ---
 
-## Quick Start
+## Возможности
 
-### Installation via Claude Code CLI
+- **6-фазный workflow**: Анализ задачи → Декомпозиция → Сбор → Фактчекинг → Синтез → Вывод
+- **Cost-First выполнение**: 4-уровневая иерархия инструментов — начинай бесплатно, эскалируй только при необходимости
+- **Evidence-Based отчёты**: каждое утверждение имеет citation, каждый источник — tier
+- **Anti-Hallucination протокол**: zero tolerance — FactCheck Agent ветирует каждый факт
+- **4 уровня глубины**: Quick (30 мин) → Standard (1–2 ч) → Deep (3–5 ч) → Exhaustive (5+ ч)
+- **Confidence Scoring**: шкала 1–5 с визуальными индикаторами для каждого утверждения
+- **Checkpoint Recovery**: heartbeat каждые 30 сек — без потери прогресса
+- **50+ инструментов**: полная матрица с рейтингами cost/quality/authority
 
+---
+
+## Выбор платформы
+
+| Платформа | Для кого | Установка | Файл |
+|-----------|----------|-----------|------|
+| **Claude Code / Cowork** | 🌟 Рекомендуется — установка в 1 клик, без файлов | Plugin marketplace (GitHub) | плагин |
+| **Claude.ai** | Опытные пользователи, нужна загрузка скилла | Загрузка ZIP/`.skill` | папка скилла |
+
+---
+
+## Быстрый старт
+
+### Claude Code / Cowork — плагин-маркетплейс 🌟 (рекомендуется, без файлов)
+
+**Cowork (для не-разработчиков):**
+1. Открой **Customize** (слева внизу)
+2. **Browse plugins → Personal → +**
+3. **Add marketplace from GitHub**
+4. Введи: `azagreev/DResearch-Skill`
+5. Плагин **deep-research-skill** установится сам — навык подключится в один клик.
+
+**Claude Code (CLI):**
 ```bash
-# Install the skill directly from the repository
-npx skills add <path-to-repo>/plugins/deep-research-skill
-
-# Example with local clone:
-git clone https://github.com/azagreev/DResearch-Skill.git
-npx skills add ./DResearch-Skill/plugins/deep-research-skill
+/plugin marketplace add azagreev/DResearch-Skill
+/plugin install deep-research-skill@deep-research-skill
 ```
 
-### Installation via Claude Marketplace
+**Активация.** Навык подключается автоматически по запросам вроде «проведи исследование», «deep research», «анализ рынка», «конкурентный анализ», «собери информацию о», «сравни», «тренды в», «due diligence». Можно вызвать и явно: `/deep-research-skill:deep-research-skill`.
 
-1. Open Claude Code
-2. Navigate to Skills Marketplace
-3. Search for "deep-research-skill"
-4. Click **Install**
+#### 🔄 Обновление плагина
 
-### Post-Installation Setup
+Сторонние маркетплейсы (как этот) **не авто-обновляются по умолчанию** — авто-pull на старте сессии включён только для официального маркетплейса Anthropic. После нового релиза кнопка Update может оставаться неактивной, пока обновление не подтянуть.
 
-```bash
-# Create output directory for research artifacts
-mkdir -p ./research_output/{heartbeats,subtasks,sources,reports}
+**✅ Рекомендуется — включить auto-update один раз** (дальше плагин обновляется сам на старте сессии):
+- **Claude Code (CLI/desktop):** `/plugin` → **Marketplaces** → `deep-research-skill` → включить **auto-update**.
+- **Cowork:** включи тумблер **auto-update** на странице плагина, если он показан.
 
-# Optional: Set environment variables for external APIs
-export BROWSERBASE_API_KEY="your-key"      # Optional - cloud browser
-export JINA_API_KEY="your-key"             # Optional - article extraction
-export FIRECRAWL_API_KEY="your-key"        # Optional - web scraping
-```
+**Разовое обновление вручную:**
+- **Claude Code (CLI):** `/plugin marketplace update deep-research-skill` → обнови плагин → `/reload-plugins` (или перезапусти сессию).
+- **Cowork (GUI):** Customize → `deep-research-skill` → **удали и добавь заново** (`+` → Add marketplace from GitHub → `azagreev/DResearch-Skill`) — форсит свежий клон.
+
+### Claude.ai (ZIP-скилл)
+
+Навык self-contained, поэтому его можно загрузить и в Claude.ai как обычный скилл:
+
+1. Заархивируй папку скилла `plugins/deep-research-skill/skills/deep-research-skill/` в ZIP (в корне архива должны лежать `SKILL.md` и `references/`).
+2. Claude → Настройки → Возможности → включи «Code execution and file creation».
+3. Настроить → Скиллы → **+** → загрузи ZIP.
+4. В любом чате попроси «проведи исследование …» — навык активируется.
 
 ---
 
-## Usage
-
-### Activation Triggers
-
-The skill activates automatically on phrases like:
-
-- "Проведи исследование..." / "Deep research on..."
-- "Анализ рынка..." / "Market analysis..."
-- "Конкурентный анализ..." / "Competitive analysis..."
-- "Собери информацию о..." / "Gather information on..."
-- "Что известно о..." / "What is known about..."
-- "Сравни..." / "Compare..."
-- "Тренды в..." / "Trends in..."
-- "Обзор технологий..." / "Technology overview..."
-- "Due diligence..."
-
-### Example Sessions
-
-**Quick Research:**
-```
-User: "Проведи исследование трендов в AI-чипах 2026"
-→ Quick depth (30 min, 5-8 subtasks)
-→ Executive summary + key findings
-```
-
-**Deep Research:**
-```
-User: "Deep research: рынок RAG-систем, конкуренты, цены, тренды"
-→ Deep depth (3-5 hours, 20-30 subtasks)
-→ Full report with methodology, analysis, implications
-```
-
-**File-Augmented Research:**
-```
-User: "Проанализируй эти отчеты и найди в вебе актуальные данные для сравнения"
-→ Route D: File-Augmented
-→ Upload analysis + web validation + benchmarking
-```
-
----
-
-## Architecture
+## Архитектура
 
 ```
-SKILL.md (entry point)
-  ├── Phase 0: Task Analysis → strategy_guide.md
-  ├── Phase 1: Decomposition → decomposition_guide.md
-  ├── Phase 2: Collection → tool_matrix.md
-  ├── Phase 3: Fact-Checking → factcheck_system.md
-  ├── Phase 4: Synthesis → output_formats.md
-  └── Phase 5: Output → acceptance_framework.md
+SKILL.md (точка входа)
+  ├── Phase 0: Анализ задачи     → references/strategy_guide.md
+  ├── Phase 1: Декомпозиция      → references/decomposition_guide.md
+  ├── Phase 2: Сбор              → references/tool_matrix.md, references/cost_matrix_full.md
+  ├── Phase 3: Фактчекинг        → references/factcheck_system.md
+  ├── Phase 4: Синтез            → references/output_formats.md
+  ├── Phase 5: Вывод             → references/output_formats.md
+  └── Phase 6: Приёмка           → references/acceptance_framework.md
 
-AGENT.MD (orchestration layer)
-  ├── Heartbeat Protocol (every 30s)
+AGENT.MD (слой оркестрации)
+  ├── Heartbeat Protocol (каждые 30 сек)
   ├── Checkpoint Recovery
   ├── Quality Gates
   └── Cost Tracking
 
-References (18 documents):
+references/ (20 документов):
   ├── Core: tool_matrix, strategy_guide, decomposition_guide, acceptance_framework
-  ├── Output: output_formats, factcheck_system, source_authority_framework, cost_matrix
+  ├── Output: output_formats, factcheck_system, source_authority_framework, cost_matrix_full
   ├── Analysis: competitive_landscape
+  ├── Infra: HOOK_MIDDLEWARE, PLATFORM_DISTRIBUTION
   └── Research: jina_reader, bypass_paywall, ecc, modelsdev, captcha,
                  academic_skills, skill_marketplace, browserbase, prompt_master
 ```
 
 ---
 
-## Repository Structure
+## Структура репозитория
 
 ```
-deep-research-skill/
+DResearch-Skill/                              # маркетплейс (корень репозитория)
 ├── .claude-plugin/
-│   └── marketplace.json          # Marketplace metadata
+│   └── marketplace.json                      # манифест маркетплейса (name, owner, plugins[])
 ├── plugins/
 │   └── deep-research-skill/
-│       └── SKILL.md              # Skill entry point (main)
-├── AGENT.MD                      # Agent orchestration protocol
-├── SKILL.master.md               # Complete master documentation
-├── LEGAL_METHODS.md              # Ethical legal bypass techniques
-├── CAPTCHA_MODULE.md             # CAPTCHA handling strategies
-├── GRAY_METHODS.md               # ⚠️ Separate document (NOT in skill bundle)
-├── CHANGELOG.md                  # Version history
-├── LICENSE                       # MIT License
-├── README.md                     # This file
-├── references/                   # 18 reference documents
-│   ├── tool_matrix.md
-│   ├── strategy_guide.md
-│   ├── decomposition_guide.md
-│   ├── acceptance_framework.md
-│   ├── output_formats.md
-│   ├── factcheck_system.md
-│   ├── source_authority_framework.md
-│   ├── cost_matrix_full.md
-│   ├── competitive_landscape.md
-│   ├── jina_reader_research.md
-│   ├── bypass_paywall_research.md
-│   ├── ecc_research.md
-│   ├── modelsdev_research.md
-│   ├── captcha_research.md
-│   ├── academic_skills_research.md
-│   ├── skill_marketplace_research.md
-│   ├── browserbase_research.md
-│   └── prompt_master_research.md
-└── docs/                         # Additional documentation (optional)
+│       ├── .claude-plugin/
+│       │   └── plugin.json                   # манифест плагина
+│       └── skills/
+│           └── deep-research-skill/          # self-contained навык
+│               ├── SKILL.md                  # точка входа навыка
+│               ├── SKILL.master.md           # полная мастер-документация
+│               ├── AGENT.MD                  # протокол оркестрации (heartbeat/checkpoint)
+│               ├── LEGAL_METHODS.md          # этичные легальные методы доступа
+│               ├── CAPTCHA_MODULE.md         # стратегии работы с CAPTCHA
+│               └── references/               # 20 reference-документов
+│                   ├── tool_matrix.md
+│                   ├── strategy_guide.md
+│                   ├── decomposition_guide.md
+│                   ├── acceptance_framework.md
+│                   ├── output_formats.md
+│                   ├── factcheck_system.md
+│                   ├── source_authority_framework.md
+│                   ├── cost_matrix_full.md
+│                   ├── competitive_landscape.md
+│                   ├── HOOK_MIDDLEWARE.md
+│                   ├── PLATFORM_DISTRIBUTION.md
+│                   ├── jina_reader_research.md
+│                   ├── bypass_paywall_research.md
+│                   ├── ecc_research.md
+│                   ├── modelsdev_research.md
+│                   ├── captcha_research.md
+│                   ├── academic_skills_research.md
+│                   ├── skill_marketplace_research.md
+│                   ├── browserbase_research.md
+│                   └── prompt_master_research.md
+├── docs/                                     # документация репозитория
+│   ├── installation.md
+│   └── usage.md
+├── CHANGELOG.md
+├── LICENSE                                   # MIT
+└── README.md                                 # этот файл
 ```
 
 ---
 
 ## Tool Tiers
 
-| Tier | Tools | Cost | Coverage |
-|------|-------|------|----------|
-| **Tier 1** | Native Claude tools (web_search, browser) | Free | ~70% tasks |
-| **Tier 2** | Jina AI Reader, arXiv, Scholar | Free/low | ~20% tasks |
-| **Tier 3** | Browserbase, ECC, PubMed | Low/medium | ~8% tasks |
-| **Tier 4** | Firecrawl, premium APIs | Premium | ~2% tasks |
+| Tier | Инструменты | Cost | Покрытие |
+|------|-------------|------|----------|
+| **Tier 1** | Native Claude tools (web_search, browser) | Free | ~70% задач |
+| **Tier 2** | Jina AI Reader, arXiv, Scholar | Free/low | ~20% задач |
+| **Tier 3** | Browserbase, ECC, PubMed | Low/medium | ~8% задач |
+| **Tier 4** | Firecrawl, premium APIs | Premium | ~2% задач |
 
-See `references/cost_matrix_full.md` for detailed pricing.
+Подробный прайсинг — в `references/cost_matrix_full.md`.
 
 ---
 
 ## Confidence Scale
 
-| Score | Level | Indicator | Usage |
-|-------|-------|-----------|-------|
-| 5 | Certain | 🔵 | Verified by multiple Tier S sources |
-| 4 | High | 🟢 | Single Tier S or multiple Tier A |
-| 3 | Moderate | 🟡 | Industry consensus, no direct source |
-| 2 | Low | 🔴 | Limited/weak sources |
-| 1 | Speculative | ⚪ | Inference, no direct evidence |
+| Балл | Уровень | Индикатор | Когда |
+|------|---------|-----------|-------|
+| 5 | Certain | 🔵 | Подтверждено несколькими Tier S источниками |
+| 4 | High | 🟢 | Один Tier S или несколько Tier A |
+| 3 | Moderate | 🟡 | Отраслевой консенсус, без прямого источника |
+| 2 | Low | 🔴 | Ограниченные/слабые источники |
+| 1 | Speculative | ⚪ | Вывод, без прямых доказательств |
 
 ---
 
 ## Source Authority Tiers
 
-| Tier | Source Type | Trust Level |
-|------|-------------|-------------|
-| **S** | SEC filings, regulators, primary data | Ground truth |
-| **A** | Reputable media, peer-reviewed journals | High |
-| **B** | Industry reports, established blogs | Medium |
-| **C** | News aggregators, press releases | Low-medium |
-| **D** | Forums, social media | Low (verify first) |
+| Tier | Тип источника | Доверие |
+|------|---------------|---------|
+| **S** | SEC filings, регуляторы, первичные данные | Ground truth |
+| **A** | Авторитетные СМИ, peer-reviewed журналы | High |
+| **B** | Отраслевые отчёты, established blogs | Medium |
+| **C** | Агрегаторы новостей, пресс-релизы | Low-medium |
+| **D** | Форумы, соцсети | Low (сначала проверить) |
 
 ---
 
-## Requirements
+## Требования
 
-- **Claude Desktop** ≥ 4.6
-- **Runtime**: claude.ai
-- **MCP Servers** (optional):
-  - `browserbase` — cloud browser automation
-  - `file-system` — local file operations
-
----
-
-## Cost Estimates
-
-| Depth | Time | Subtasks | Est. Cost (APIs) |
-|-------|------|----------|-----------------|
-| Quick | 30 min | 5-8 | $0-2 |
-| Standard | 1-2h | 10-15 | $2-5 |
-| Deep | 3-5h | 20-30 | $5-15 |
-| Exhaustive | 5+h | 30-50 | $15-50 |
-
-> Note: Costs are for external APIs only. Native Claude tools are free. Actual costs depend on tool selection and source availability.
+- **Claude Code** ≥ 4.6 (или Claude.ai с включённым code execution)
+- **MCP-серверы** (опционально):
+  - `browserbase` — облачная браузерная автоматизация
+  - `file-system` — локальные файловые операции
 
 ---
 
-## Safety & Ethics
+## Оценка стоимости
 
-- All legal bypass methods follow ETHICAL_ONLY scope
-- CAPTCHA handling uses human-in-the-loop escalation
-- Source authority awareness prevents misinformation spread
-- Confidence scoring prevents overstatement of weak claims
-- No automated exploitation — all techniques are documented for transparency
+| Глубина | Время | Subtasks | Прим. стоимость (API) |
+|---------|-------|----------|-----------------------|
+| Quick | 30 мин | 5–8 | $0–2 |
+| Standard | 1–2 ч | 10–15 | $2–5 |
+| Deep | 3–5 ч | 20–30 | $5–15 |
+| Exhaustive | 5+ ч | 30–50 | $15–50 |
 
----
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/name`
-3. Make changes following the existing style
-4. Test with actual research tasks
-5. Submit a pull request
+> Стоимость — только для внешних API. Native Claude tools бесплатны. Фактические затраты зависят от выбора инструментов и доступности источников.
 
 ---
 
-## Changelog
+## Безопасность и этика
 
-See [CHANGELOG.md](CHANGELOG.md) for version history.
-
----
-
-## License
-
-This project is licensed under the MIT License — see [LICENSE](LICENSE) for details.
+- Все методы обхода следуют scope **ETHICAL_ONLY**
+- Работа с CAPTCHA — через human-in-the-loop эскалацию
+- Source authority awareness предотвращает распространение дезинформации
+- Confidence scoring предотвращает завышение слабых утверждений
+- Никакой автоматической эксплуатации — все техники документированы для прозрачности
 
 ---
 
-## Acknowledgments
+## Обратная связь и вклад
 
-- Built for Claude Desktop ecosystem
-- Inspired by production research workflows at leading AI labs
-- Tool research based on extensive benchmarking (see `references/`)
-- Community feedback and contributions welcome
+- **Вопросы, баги, идеи:** Telegram [@zagreev](https://t.me/zagreev)
+- PR приветствуются: форк → ветка `feature/name` → изменения в стиле проекта → pull request
+- История версий — в [CHANGELOG.md](CHANGELOG.md)
+
+---
+
+## Лицензия
+
+MIT License — см. [LICENSE](LICENSE).
+
+---
+
+<p align="center">
+  <b>Deep Research Skill v2.0.0</b> · Автор: Andrey Zagreev · <a href="https://t.me/zagreev">@zagreev</a>
+</p>

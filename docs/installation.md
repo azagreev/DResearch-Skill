@@ -1,107 +1,86 @@
-# Installation Guide
+# Установка — Deep Research Skill
 
-## Deep Research Skill — Installation Instructions
+Навык поставляется как **плагин Claude Code** (маркетплейс на GitHub) и одновременно как **self-contained скилл**, который можно загрузить в Claude.ai.
 
 ---
 
-## Method 1: Claude Code CLI (Recommended)
+## Способ 1: Claude Code / Cowork — плагин-маркетплейс (рекомендуется)
 
-### Step 1: Clone or Download the Repository
+### Cowork (GUI, без файлов)
+
+1. Открой **Customize** (слева внизу).
+2. **Browse plugins → Personal → +**.
+3. **Add marketplace from GitHub**.
+4. Введи: `azagreev/DResearch-Skill`.
+5. Установи плагин **deep-research-skill** — навык подключится автоматически.
+
+### Claude Code (CLI)
 
 ```bash
-# Clone from GitHub
+# 1. Добавить маркетплейс из GitHub
+/plugin marketplace add azagreev/DResearch-Skill
+
+# 2. Установить плагин (формат: <плагин>@<маркетплейс>)
+/plugin install deep-research-skill@deep-research-skill
+```
+
+После установки навык активируется автоматически по запросам вроде «проведи исследование», «deep research», «анализ рынка». Явный вызов: `/deep-research-skill:deep-research-skill`.
+
+### Локальная проверка перед публикацией (из клона)
+
+Маркетплейс можно добавить из локальной папки — удобно, пока репозиторий не на GitHub:
+
+```bash
 git clone https://github.com/azagreev/DResearch-Skill.git
 cd DResearch-Skill
-
-# Or download and extract the archive
-# unzip deep-research-skill.zip && cd deep-research-skill
+/plugin marketplace add ./           # путь до папки с .claude-plugin/marketplace.json
+/plugin install deep-research-skill@deep-research-skill
 ```
 
-### Step 2: Install via `npx skills add`
-
-```bash
-# Install the skill from the plugins directory
-npx skills add ./plugins/deep-research-skill
-```
-
-The `npx skills add` command will:
-1. Validate the `SKILL.md` file
-2. Register the skill in Claude Desktop
-3. Make it available for automatic activation
-
-### Step 3: Verify Installation
-
-```bash
-# List installed skills
-npx skills list
-
-# You should see "deep-research-skill" in the output
-```
+> Относительные пути `source` в манифесте резолвятся от корня репозитория, поэтому локальное добавление работает так же, как из GitHub.
 
 ---
 
-## Method 2: Claude Marketplace
+## Способ 2: Claude.ai (ZIP-скилл)
 
-1. Open **Claude Code** application
-2. Navigate to **Skills** → **Marketplace**
-3. Search for: `deep-research-skill`
-4. Click **Install** on the skill card
-5. Wait for installation confirmation
+Навык self-contained, поэтому загружается в Claude.ai как обычный скилл:
 
----
-
-## Method 3: Manual Installation
-
-1. Locate your Claude Desktop skills directory:
-   - **macOS**: `~/Library/Application Support/Claude/skills/`
-   - **Windows**: `%APPDATA%/Claude/skills/`
-   - **Linux**: `~/.config/Claude/skills/`
-
-2. Copy the skill directory:
-   ```bash
-   cp -r plugins/deep-research-skill ~/.config/Claude/skills/
-   ```
-
-3. Restart Claude Desktop
+1. Заархивируй папку `plugins/deep-research-skill/skills/deep-research-skill/` в ZIP.
+   В **корне** архива должны лежать `SKILL.md` и каталог `references/`.
+2. Claude → **Настройки → Возможности** → включи «Code execution and file creation».
+3. **Настроить → Скиллы → +** → загрузи ZIP.
+4. В любом чате попроси «проведи исследование …» — навык активируется.
 
 ---
 
-## Post-Installation Setup
+## Способ 3: Ручная установка (Claude Code skills dir)
 
-### Create Output Directory Structure
+Скопируй self-contained папку навыка в каталог скиллов Claude:
 
-The skill uses a structured output directory for research artifacts:
-
-```bash
-mkdir -p ./research_output/
-mkdir -p ./research_output/heartbeats
-mkdir -p ./research_output/subtasks
-mkdir -p ./research_output/sources
-mkdir -p ./research_output/reports
-```
-
-> This is optional — the skill will create directories as needed.
-
-### Optional: Configure External APIs
-
-For enhanced capabilities, set up these optional API keys:
+- **macOS**: `~/Library/Application Support/Claude/skills/`
+- **Windows**: `%APPDATA%/Claude/skills/`
+- **Linux**: `~/.config/Claude/skills/`
 
 ```bash
-# Jina AI Reader — article extraction and summarization
-export JINA_API_KEY="jina_xxxxxxxx"
-
-# Browserbase — cloud browser automation
-export BROWSERBASE_API_KEY="bb_live_xxxxxxxx"
-
-# Firecrawl — web scraping (premium tier)
-export FIRECRAWL_API_KEY="fc_xxxxxxxx"
+cp -r plugins/deep-research-skill/skills/deep-research-skill \
+      ~/.config/Claude/skills/deep-research-skill
 ```
 
-Add these to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.) for persistence.
+Перезапусти Claude.
 
-### Optional: Configure MCP Servers
+---
 
-Add to your Claude Desktop MCP configuration:
+## Опционально: внешние API
+
+Для расширенных возможностей задай ключи (все опциональны — без них работает Tier 1):
+
+```bash
+export JINA_API_KEY="jina_xxxxxxxx"            # извлечение статей
+export BROWSERBASE_API_KEY="bb_live_xxxxxxxx"  # облачный браузер
+export FIRECRAWL_API_KEY="fc_xxxxxxxx"         # web scraping (premium)
+```
+
+## Опционально: MCP-серверы
 
 ```json
 {
@@ -109,9 +88,7 @@ Add to your Claude Desktop MCP configuration:
     "browserbase": {
       "command": "npx",
       "args": ["@browserbase/mcp@latest"],
-      "env": {
-        "BROWSERBASE_API_KEY": "your-api-key"
-      }
+      "env": { "BROWSERBASE_API_KEY": "your-api-key" }
     },
     "file-system": {
       "command": "npx",
@@ -123,85 +100,40 @@ Add to your Claude Desktop MCP configuration:
 
 ---
 
-## Verification
+## Проверка
 
-### Test Basic Activation
-
-After installation, try these commands in Claude Code:
+Попроси в чате:
 
 ```
-"Проведи исследование трендов в AI"
+Проведи исследование трендов в AI-чипах 2026
 ```
 
-The skill should activate automatically and begin the research workflow.
+Навык должен активироваться и запустить 6-фазный workflow.
 
-### Check Available Commands
+### Если навык не активируется
 
-The skill provides these automatic triggers:
-
-| Trigger Type | Examples |
-|-------------|----------|
-| Research | "проведи исследование", "deep research" |
-| Analysis | "анализ рынка", "конкурентный анализ" |
-| Information | "собери информацию о", "что известно о" |
-| Comparison | "сравни", " versus" |
-| Trends | "тренды в", "обзор технологий" |
-| Due Diligence | "due diligence", "внешний аудит" |
+1. **Claude Code:** `/plugin` → проверь, что `deep-research-skill` установлен и включён; при необходимости `/reload-plugins`.
+2. Убедись, что версия плагина в `/plugin` → Marketplaces соответствует свежему релизу (сторонние маркетплейсы не авто-обновляются — см. README → «Обновление плагина»).
+3. Попробуй явный вызов `/deep-research-skill:deep-research-skill` или фразу «deep research».
 
 ---
 
-## Troubleshooting
-
-### Skill Not Activating
-
-1. Check installation:
-   ```bash
-   npx skills list | grep deep-research
-   ```
-
-2. Verify SKILL.md exists:
-   ```bash
-   ls ~/.config/Claude/skills/deep-research-skill/SKILL.md
-   ```
-
-3. Try manual activation by mentioning "deep research" explicitly
-
-### API Rate Limits
-
-- **Tier 1 tools** (native): No rate limits
-- **Tier 2 tools** (Jina, arXiv): Free tiers available
-- **Tier 3-4 tools**: Require API keys, see `references/cost_matrix_full.md`
-
-### Token Budget Issues
-
-- Use **Quick** depth for simple queries
-- The skill automatically manages token budgets
-- Check `references/cost_matrix_full.md` for estimates
-
-### Checkpoint Recovery
-
-If research is interrupted:
-1. Re-ask the same question
-2. The skill will detect previous checkpoints
-3. Resume from the last completed phase
-
----
-
-## Uninstallation
+## Удаление
 
 ```bash
-# Via CLI
-npx skills remove deep-research-skill
+# Claude Code
+/plugin uninstall deep-research-skill@deep-research-skill
+/plugin marketplace remove deep-research-skill
 
-# Or manually
+# Ручная установка
 rm -rf ~/.config/Claude/skills/deep-research-skill
 ```
 
 ---
 
-## Next Steps
+## Дальше
 
-- Read `SKILL.master.md` for complete documentation
-- Check `references/tool_matrix.md` for available tools
-- Review `AGENT.MD` for orchestration details
-- See `CHANGELOG.md` for version history
+- `plugins/deep-research-skill/skills/deep-research-skill/SKILL.master.md` — полная документация
+- `references/tool_matrix.md` — доступные инструменты
+- `AGENT.MD` — детали оркестрации
+- [CHANGELOG.md](../CHANGELOG.md) — история версий

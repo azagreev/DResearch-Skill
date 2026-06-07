@@ -1,0 +1,22 @@
+{
+  "name": "deep-research-skill",
+  "version": "2.0.0",
+  "description": "Production-ready deep research skill: 6-фазный workflow (анализ задачи, декомпозиция, сбор, фактчекинг, синтез, вывод), cost-first выбор инструментов, evidence-based отчёты с citations и confidence scoring, anti-hallucination протокол.",
+  "author": {
+    "name": "Andrey Zagreev",
+    "url": "https://github.com/azagreev"
+  },
+  "keywords": [
+    "research",
+    "deep-research",
+    "analysis",
+    "fact-checking",
+    "competitive-analysis",
+    "market-research",
+    "due-diligence",
+    "multi-agent"
+  ],
+  "homepage": "https://github.com/azagreev/DResearch-Skill",
+  "repository": "https://github.com/azagreev/DResearch-Skill",
+  "license": "MIT"
+}
