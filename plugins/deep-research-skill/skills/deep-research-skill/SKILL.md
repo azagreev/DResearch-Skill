@@ -1,8 +1,8 @@
 ---
 name: deep-research-skill
-version: 0.3.0
+version: 0.3.1
 author: Andrey Zagreev (https://t.me/zagreev)
-last_updated: 2026-06-07
+last_updated: 2026-06-08
 description: |
   Выполняй глубокое исследование по заданной задаче. Собирай информацию
   из множества источников, верифицируй факты, анализируй и выдавай
@@ -19,7 +19,7 @@ requires_mcp: browserbase (optional), file-system
 
 # Deep Research Skill
 
-> **Версия:** 0.3.0 | **Последнее обновление:** 2026-06-08
+> **Версия:** 0.3.1 | **Последнее обновление:** 2026-06-08
 > **Полная документация:** `SKILL.master.md` (lazy loading)
 > **Heartbeat/Checkpoint протокол:** `AGENT.MD`
 
@@ -549,4 +549,4 @@ CloakBrowser (prevent) → CapSolver (AI, 2-5s, $0.80/1K)
 
 ---
 
-*Deep Research Skill v0.3.0 — testing release. 18/18 Acceptance Criteria implemented. Полная документация: SKILL.master.md. Язык адаптируется к языку пользователя. All phase modules load on-demand — no eager loading.*
+*Deep Research Skill v0.3.1 — testing release. Полная документация: SKILL.master.md. Язык адаптируется к языку пользователя. All phase modules load on-demand — no eager loading.*

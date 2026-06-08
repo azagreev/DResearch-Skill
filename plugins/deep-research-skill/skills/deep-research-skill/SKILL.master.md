@@ -1,12 +1,12 @@
 ---
 name: deep-research-master
-version: "0.3.0"
+version: "0.3.1"
 runtime: multi-platform
 requires_connector: true
 categories: [research, analysis, web-scraping, synthesis, verification]
 tags: [deep-research, fact-check, multi-source, evidence-based, agentic]
 author: Deep Research Skill Team
-license: Apache-2.0
+license: MIT
 description: >
   Production-grade deep research skill with multi-model routing, 3D cost matrix tool orchestration,
   autonomous task decomposition, multi-tier source authority, independent fact-check agent,
@@ -16,7 +16,7 @@ description: >
 
 # SKILL.master.md — Deep Research Skill: Полная Мастер-Документация
 
-> **Версия:** 0.3.0 | **Дата:** 2026-06-08 | **Статус:** Testing release
+> **Версия:** 0.3.1 | **Дата:** 2026-06-08 | **Статус:** Testing release
 >
 > Этот документ — единый источник truth (SSOT) для всех компонентов Deep Research Skill.
 > Он объединяет результаты 17 исследовательских работ, проведённых в январе-июне 2025/2026.
@@ -2599,11 +2599,11 @@ description: >
   'investigate', 'find information about', or needs grounded
   synthesis from multiple sources. Supports 4 depth levels,
   6 output formats, automatic fact-checking, and 30+ tools.
-license: Apache-2.0
+license: MIT
 compatibility: Requires internet access, Python 3.10+
 metadata:
   author: deep-research-team
-  version: "0.3.0"
+  version: "0.3.1"
   category: research
   tags: [research, analysis, web-scraping, synthesis, fact-check]
 allowed-tools: Bash Read Write Fetch Edit web_search browser_visit
@@ -2623,17 +2623,17 @@ v2.0.0  # Breaking changes (новая архитектура — DRGN, FCA, Mul
 
 ```bash
 # Claude Code
-/plugin marketplace add your-org/deep-research-skill
+/plugin marketplace add azagreev/DResearch-Skill
 /plugin install deep-research
 
 # GitHub CLI (2026+)
-gh skill install your-org/deep-research-skill --agent claude-code
+gh skill install azagreev/DResearch-Skill --agent claude-code
 
 # npx
-npx skills add your-org/deep-research-skill
+npx skills add azagreev/DResearch-Skill
 
 # Manual (любая платформа)
-git clone https://github.com/your-org/deep-research-skill.git
+git clone https://github.com/azagreev/DResearch-Skill.git
 # Скопировать SKILL.md в .claude/skills/ или .codex/skills/ или .github/skills/
 ```
 

@@ -1,8 +1,8 @@
 # 🔍 Deep Research Skill
 
-> **Production-ready навык глубокого исследования для Claude Code.** Многофазный workflow с cost-first выполнением, evidence-based отчётами, anti-hallucination протоколом и прозрачным confidence scoring.
+> **Навык глубокого исследования для Claude Code (testing release).** Многофазный workflow с cost-first выполнением, evidence-based отчётами, anti-hallucination протоколом и прозрачным confidence scoring.
 
-**Версия:** 0.3.0 | **Лицензия:** MIT | **Язык:** русский
+**Версия:** 0.3.1 | **Лицензия:** MIT | **Язык:** русский
 **Автор:** Andrey Zagreev | **Обратная связь:** [@zagreev](https://t.me/zagreev)
 
 ---
@@ -16,7 +16,7 @@
 - **4 уровня глубины**: Quick (30 мин) → Standard (1–2 ч) → Deep (3–5 ч) → Exhaustive (5+ ч)
 - **Confidence Scoring**: шкала 1–5 с визуальными индикаторами для каждого утверждения
 - **Checkpoint Recovery**: адаптивный heartbeat (2–10 мин) + checkpoint на каждом gate — откат к последнему gate, а не к нулю
-- **50+ инструментов**: полная матрица с рейтингами cost/quality/authority
+- **30+ инструментов**: полная матрица с рейтингами cost/quality/authority
 
 ---
 
@@ -232,5 +232,5 @@ MIT License — см. [LICENSE](LICENSE).
 ---
 
 <p align="center">
-  <b>Deep Research Skill v0.3.0</b> · Автор: Andrey Zagreev · <a href="https://t.me/zagreev">@zagreev</a>
+  <b>Deep Research Skill v0.3.1</b> · Автор: Andrey Zagreev · <a href="https://t.me/zagreev">@zagreev</a>
 </p>

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-06-08
+
+Honesty & consistency patch (no behavior change). Removes overclaims surfaced by an internal audit.
+
+### Fixed
+- Dropped "Production-ready" / "18/18 Acceptance Criteria implemented" overclaims from user-facing text
+  (README header, `plugin.json` + `marketplace.json` descriptions, `SKILL.md` footer, `AGENT.MD` status) —
+  this is a testing release.
+- License unified to MIT in `SKILL.master.md` (was Apache-2.0 in places; conflicted with `LICENSE`).
+- Corrected `docs/usage.md` recovery claim ("No duplicate work or API calls" → native resume restores
+  state but does not enforce zero re-fetch; use the supervised orchestrator for that).
+- Version stragglers (`AGENT.MD` 2.0.0 → 0.3.x); tool count aligned to 30+ in README; `your-org`
+  placeholders → `azagreev/DResearch-Skill`.
+
+### Added
+- `examples/retro_checklist.md` — retrospective checklist for reviewing a `run_journal`.
+
 ## [0.3.0] - 2026-06-08
 
 Supervised control-loop (variant A) — the enforcement layer the earlier "known limitations" pointed to.
@@ -93,6 +110,7 @@ multi-agent resilience layer is not yet executed as real processes — see Known
   single Claude context; true fault tolerance requires the external control-loop (see `examples/`)
 - The checkpoint token is a placeholder; resumable state serialization is not yet implemented
 
+[0.3.1]: https://github.com/azagreev/DResearch-Skill/releases/tag/v0.3.1
 [0.3.0]: https://github.com/azagreev/DResearch-Skill/releases/tag/v0.3.0
 [0.2.0]: https://github.com/azagreev/DResearch-Skill/releases/tag/v0.2.0
 [0.1.0]: https://github.com/azagreev/DResearch-Skill/releases/tag/v0.1.0

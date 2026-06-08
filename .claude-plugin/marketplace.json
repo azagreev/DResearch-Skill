@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "deep-research-skill",
-  "description": "Deep Research Skill — production-ready плагин для глубокого исследования в Claude Code: анализ задачи, декомпозиция, мультисорс-сбор, фактчекинг, синтез и структурированный отчёт с citations и confidence scoring.",
+  "description": "Deep Research Skill — плагин для глубокого исследования в Claude Code (testing release): анализ задачи, декомпозиция, мультисорс-сбор, фактчекинг, синтез и структурированный отчёт с citations и confidence scoring.",
   "owner": {
     "name": "Andrey Zagreev",
     "url": "https://github.com/azagreev"

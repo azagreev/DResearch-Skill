@@ -244,8 +244,8 @@ During research, you can say:
 
 If research is interrupted:
 - Simply re-ask the same question
-- The skill resumes from the last checkpoint
-- No duplicate work or API calls
+- The skill restores state from the last checkpoint (sources, claims, budget carried forward)
+- Note: native resume restores state but does **not enforce** zero re-fetch — for hard no-refetch use the supervised orchestrator in `examples/`
 
 ### Multi-Agent Coordination
 
