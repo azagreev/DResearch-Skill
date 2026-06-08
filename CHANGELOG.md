@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-06-08
+
+Supervised control-loop (variant A) — the enforcement layer the earlier "known limitations" pointed to.
+`examples/supervised_orchestrator.workflow.js` is now a real, runnable orchestrator, not a skeleton.
+
+### Added
+- **Supervised orchestrator** (`examples/supervised_orchestrator.workflow.js`): a deterministic control
+  loop (Workflow script) running Research / Verify / Format as separate subagents. Collection happens in
+  ONE stage and is cached; Verify/Format receive the cached snapshot — the loop never re-invokes
+  collection, so no-refetch is enforced by control flow, not by asking the model.
+- **Resume-aware**: a loader stage reads a prior `snapshot.json`; on a topic (fingerprint) match it SKIPS
+  Research entirely. The no-refetch metric (`loop_collection_calls_total`) is counted by the loop itself —
+  externally observed, not self-reported.
+- **Run journal**: every run writes `research_output/<runId>/run_journal.{json,md}` (+ `snapshot.json`)
+  with a step-by-step log and a retro block — after-action review material.
+
+### Tested (two demo runs, same runId)
+- Fresh run: `loop_collection_calls_total = 1` (collection ran once), 3 sources, status done.
+- Resume run: `resumed = true`, Research SKIPPED, **`loop_collection_calls_total = 0`** — proven no-refetch.
+
+### Honest notes
+- Resume's token saving scales with how expensive collection was; on a trivial task the delta is small
+  (the demo resume still cost ~150k because Verify/Format reasoning, not collection, dominated). The value
+  is the enforced, externally-counted no-refetch mechanism — not a guaranteed token cut on every run.
+- Subagent-level hard no-fetch (Verify/Format physically without web tools) is available via a
+  tool-restricted `agentType`; the example enforces no-refetch at the loop level + instruction.
+- The native (non-orchestrated) skill still cannot enforce no-refetch — use this orchestrator for that.
+
 ## [0.2.0] - 2026-06-08
 
 Checkpoint-resume + token discipline. Honest scope: resume delivers state continuity and integrity
@@ -65,5 +93,6 @@ multi-agent resilience layer is not yet executed as real processes — see Known
   single Claude context; true fault tolerance requires the external control-loop (see `examples/`)
 - The checkpoint token is a placeholder; resumable state serialization is not yet implemented
 
+[0.3.0]: https://github.com/azagreev/DResearch-Skill/releases/tag/v0.3.0
 [0.2.0]: https://github.com/azagreev/DResearch-Skill/releases/tag/v0.2.0
 [0.1.0]: https://github.com/azagreev/DResearch-Skill/releases/tag/v0.1.0

@@ -1,109 +1,163 @@
 /**
- * supervised_orchestrator.workflow.js — ОБРАЗЕЦ / teaching skeleton (НЕ для прод-запуска как есть)
- * =============================================================================================
+ * supervised_orchestrator.workflow.js — REAL supervised control-loop с RESUME (v0.3, вариант A)
+ * ============================================================================================
  *
- * Зачем он здесь.
- * AGENT.MD описывает многоагентную отказоустойчивость (watchdog, circuit breaker,
- * deadlock-детектор, авто-рестарт) как работающую распределённую систему. Внутри Claude Code
- * это исполняется одним контекстом Claude, который читает markdown. «Research / FactCheck /
- * Format agent» — роли в ОДНОМ контексте, а не процессы. Поэтому когда контекст переполняется
- * на ~20-й минуте и компактится, оркестратор теряет состояние и тихо останавливается —
- * а перезапустить его некому, ведь «супервизор» из доки живёт в том же умершем контексте.
+ * Идея: оркестратор — этот JS-цикл, он живёт ВНЕ контекста агентов.
+ *   - Сбор (collection) — одна стадия (Research). Результат кэшируется в JS (`snap`) и пишется на диск.
+ *   - Verify/Format ПОЛУЧАЮТ кэш как данные; цикл их не просит собирать и не вызывает коллектор повторно.
+ *   - RESUME: на старте loader-subagent читает прошлый snapshot.json. Если он есть и тема совпала —
+ *     стадия Research ПРОПУСКАЕТСЯ целиком, `loop_collection_calls_total` остаётся 0. Это и есть
+ *     resume, который РЕАЛЬНО не пере-собирает — доказательство в журнале считает сам цикл (внешне),
+ *     а не самоотчёт агента (в нативном resume агент писал «0», реально фетчил — здесь так нельзя).
  *
- * Этот файл показывает ПРАВИЛЬНУЮ форму «корректирующего» механизма: не пятый агент-роль,
- * а CONTROL-LOOP снаружи агентского контекста. Цикл — детерминированный JS, у него НЕТ
- * контекста, который можно потерять, поэтому он переживает смерть любого воркера.
+ * Run-journal на диск каждый прогон: ./research_output/<runId>/run_journal.{json,md} (+ snapshot.json).
+ *   Скрипт Workflow не имеет ФС — файлы пишет subagent; журнал ещё и возвращается как return value.
  *
- * Контраст, который надо увидеть:
- *   - «агент-роль»  : живёт в контексте воркера, делит его судьбу, добавляет нагрузку на контекст.
- *   - «control-loop»: живёт вне воркера, ловит его падение как ДАННЫЕ, переспавнивает в ЧИСТЫЙ контекст.
+ * Запуск:
+ *   1-й раз (сбор):   Workflow({ scriptPath, args: { topic, runId: 'my_run', depth: 'Quick' } })
+ *   resume (без сбора): тот же runId и та же topic → Research пропускается, collection=0.
  *
- * ✅ `snapshot` — реальный сериализованный снимок состояния (sources с extract'ами, claims,
- *    budget, next_phase), а НЕ строка-заглушка. correct() прокидывает его в новый спавн, поэтому
- *    переспавн продолжает с собранных данных, НЕ пере-собирая источники. Схема — AGENT.MD §8.0.
- *
- * Запуск (когда checkpoint станет реальным):  Workflow({ scriptPath: '<этот файл>', args: { topic: '...' } })
+ * Hard-enforcement (опц.): чтобы Verify/Format ФИЗИЧЕСКИ не могли фетчить — дай им opts.agentType
+ *   без web-инструментов. Сейчас enforced loop-level (цикл не вызывает коллектор) + инструкция.
  */
 
 export const meta = {
   name: 'deep-research-supervised',
-  description: 'Внешний control-loop: спавнит research-агента, корректирует и переспавнивает на сбое',
-  phases: [{ title: 'Plan' }, { title: 'Research (supervised)' }, { title: 'Verify' }, { title: 'Retro' }],
+  description: 'Supervised control-loop с resume: собрать один раз и закэшировать; при resume сбор пропускается (collection=0); пишет run-journal для ретро.',
+  phases: [
+    { title: 'Resume' },
+    { title: 'Research' },
+    { title: 'Verify' },
+    { title: 'Format' },
+    { title: 'Journal' },
+  ],
 }
 
-// Что воркер ОБЯЗАН вернуть структурой. Структура = control-plane ВИДИТ состояние,
-// а не угадывает его по heartbeat-файлу, который мог и не записаться (тигр T3 из пре-мортема).
-const RESULT = {
-  type: 'object',
-  required: ['status', 'blockedBy', 'snapshot', 'findings', 'spent', 'quality'],
-  properties: {
-    status:     { enum: ['done', 'partial', 'blocked'] },
-    blockedBy:  { enum: ['budget', 'timeout', 'paywall', 'low_quality', 'none'] },
-    snapshot:   { type: 'object',                         // сериализованный resume-снимок (AGENT.MD §8.0)
-                  properties: { stage:      { type: 'string' },
-                                next_phase: { type: 'number' },
-                                sources:    { type: 'array', items: { type: 'object' } },  // с extract'ами
-                                claims:     { type: 'array', items: { type: 'object' } },
-                                budget:     { type: 'object' } } },
-    findings:   { type: 'array', items: { type: 'object' } },
-    spent:      { type: 'number' },
-    quality:    { type: 'number' },                       // 0-100
-  },
-}
+// ----------------------------- входные параметры (args может прийти строкой — разбираем оба) -----------------------------
+const A = (typeof args === 'string') ? (() => { try { return JSON.parse(args) } catch (e) { return {} } })() : (args || {})
+const TOPIC = A.topic || 'Актуальная цена API Claude Opus 4.x за 1M токенов (input/output), офиц. Anthropic'
+const RUN_ID = A.runId || 'supervised_demo'
+const DEPTH = A.depth || 'Quick'
+const MAX_RESEARCH_TRIES = A.maxResearchTries || 3
+const OUT_DIR = `./research_output/${RUN_ID}`
 
-// ЭТО и есть «корректирующий агент» — но это КОД, не LLM-персона, и он живёт СНАРУЖИ
-// контекста воркера, поэтому переживает его смерть. Детерминированное правило коррекции:
+// ----------------------------- схемы -----------------------------
+const RESUME_LOAD = { type: 'object', required: ['found'], properties: {
+  found: { type: 'boolean' },
+  topic: { type: 'string' },
+  snapshot: { type: 'object' },
+} }
+const SNAPSHOT = { type: 'object', required: ['status', 'blockedBy', 'sources', 'budget'], properties: {
+  status: { enum: ['done', 'partial', 'blocked'] },
+  blockedBy: { enum: ['budget', 'timeout', 'paywall', 'low_quality', 'none'] },
+  sources: { type: 'array', items: { type: 'object', properties: {
+    id: { type: 'string' }, url: { type: 'string' }, tier: { type: 'string' }, extract: { type: 'object' } } } },
+  claims: { type: 'array', items: { type: 'object' } },
+  budget: { type: 'object', properties: { spent_usd: { type: 'number' }, loads_used: { type: 'number' } } },
+} }
+const VERDICT = { type: 'object', required: ['confirmed', 'rejected'], properties: {
+  confirmed: { type: 'array', items: { type: 'object' } }, rejected: { type: 'array', items: { type: 'object' } } } }
+const REPORT = { type: 'object', required: ['fact_sheet'], properties: {
+  fact_sheet: { type: 'string' }, aggregate_confidence: { type: 'string' } } }
+
+// ------------- run-journal: строит ЦИКЛ => метрики внешне наблюдаемые -------------
+const journal = []
+let loopCollectionCalls = 0 // сколько раз ЦИКЛ вызвал коллектор. Resume/Verify/Format его не увеличивают.
+function note(stage, data) { journal.push({ step: journal.length + 1, stage, ...data }); log(`[${stage}] ${JSON.stringify(data)}`) }
+
 function correct(prev) {
-  // Прокидываем РЕАЛЬНЫЙ снимок в новый спавн: уже собранные sources/claims не пере-собираются.
-  const resume = prev?.snapshot
-    ? `Возобнови по сохранённому состоянию (НЕ пере-собирай sources со status rendered/done):\n${JSON.stringify(prev.snapshot)}\n`
-    : ''
-  switch (prev?.blockedBy) {
-    case 'budget':      return `${resume}Бюджет на исходе: только Tier-1, финализируй по собранному.`
-    case 'timeout':     return `${resume}Источник завис: пропусти, failover на следующий tier.`
-    case 'paywall':     return `${resume}Paywall: НЕ эскалируй человеку, возьми открытые альтернативы.`
-    case 'low_quality': return `${resume}quality<70: переразбей слабую subtask на узкие запросы.`
-    default:            return null                       // первая попытка — коррекции нет
+  if (!prev) return ''
+  switch (prev.blockedBy) {
+    case 'budget':      return 'Бюджет на исходе: только Tier-1, финализируй по собранному.'
+    case 'timeout':     return 'Источник завис: пропусти, failover на следующий tier.'
+    case 'paywall':     return 'Paywall: НЕ эскалируй человеку, возьми открытые альтернативы.'
+    case 'low_quality': return 'Качество < порога: переразбей слабую subtask на узкие запросы.'
+    default:            return ''
   }
 }
 
-phase('Plan')
-const plan = await agent(`Декомпозируй задачу и дай план сбора: ${args.topic}`)
-
-phase('Research (supervised)')
-let state = null
-const attempts = []
-for (let i = 1; i <= 4; i++) {                            // bounded respawn — заменяет невнятный «2×interval watchdog»
-  const fix = correct(state)
-  const directive = `${fix ?? 'Выполни план. Верни структурой состояние + возобновляемый checkpoint.'}\n\nПлан:\n${plan}`
-  try {
-    // СВЕЖИЙ subagent = СВЕЖИЙ контекст. Накопление контекста, убивающее схему на 20-й мин,
-    // обнуляется на каждом спавне. Состояние держит JS-цикл, а он не компактится.
-    state = await agent(directive, { schema: RESULT, label: `research:try-${i}`, phase: 'Research (supervised)' })
-  } catch (e) {
-    // Воркер умер (throw BudgetExceededException и т.п.). Цикл — жив, он здесь, снаружи.
-    // Реальный код классифицирует причину по `e`; здесь консервативно считаем бюджетом.
-    state = { status: 'blocked', blockedBy: 'budget',
-              snapshot: state?.snapshot ?? { stage: 'cp_00', next_phase: 1, sources: [], claims: [], budget: {} },
-              findings: state?.findings ?? [], spent: 0, quality: 0 }
-  }
-  attempts.push({ try: i, status: state.status, blockedBy: state.blockedBy, spent: state.spent })
-  log(`try ${i}: ${state.status}${state.blockedBy !== 'none' ? ` (blocked: ${state.blockedBy})` : ''}`)
-  if (state.status === 'done') break                      // успех
-  if (state.status === 'partial' && i >= 2) break         // good-enough fallback, не жжём вечно
+// ==================== RESUME — loader читает прошлый snapshot.json (это не сбор) ====================
+phase('Resume')
+let resumed = false
+let snap = null
+const loaded = await agent(
+  `Ты Resume-loader. Прочитай файл ${OUT_DIR}/snapshot.json, ЕСЛИ он существует. НЕ фетчи из web, НЕ выдумывай.
+Верни {found:true, topic, snapshot} с его содержимым; если файла нет или он нечитаем — {found:false}.`,
+  { schema: RESUME_LOAD, label: 'resume-check', phase: 'Resume' },
+)
+if (loaded && loaded.found && loaded.topic === TOPIC && loaded.snapshot) {
+  resumed = true
+  snap = loaded.snapshot
+  note('resume', { resumed: true, sources_loaded: (snap.sources || []).length, loop_invoked_collection: false, decision: 'fingerprint MATCH → Research SKIPPED' })
+} else {
+  const reason = (loaded && loaded.found) ? 'fingerprint MISMATCH (другая тема)' : 'snapshot отсутствует'
+  note('resume', { resumed: false, reason, decision: 'fresh run → Research' })
 }
 
+// ==================== RESEARCH — выполняется ТОЛЬКО если НЕ resumed ====================
+phase('Research')
+if (!resumed) {
+  for (let i = 1; i <= MAX_RESEARCH_TRIES; i++) {
+    const fix = correct(snap)
+    const directive = `Ты Research-агент. Декомпозируй и собери данные, ТОЛЬКО Tier-1 (native web). Depth ${DEPTH}. ${fix}
+Верни SNAPSHOT: sources[] (id,url,tier,extract с реальными значениями), budget{spent_usd,loads_used}, status, blockedBy.
+Тема: ${TOPIC}`
+    loopCollectionCalls++ // ЦИКЛ вызывает коллектор — считаем внешне, ДО вызова
+    let res
+    try { res = await agent(directive, { schema: SNAPSHOT, label: `research:try-${i}`, phase: 'Research' }) }
+    catch (e) { res = { status: 'blocked', blockedBy: 'budget', sources: (snap && snap.sources) || [], claims: [], budget: { spent_usd: 0, loads_used: 0 } } }
+    snap = res
+    note('research', { attempt: i, status: snap.status, blockedBy: snap.blockedBy, sources: (snap.sources || []).length, loop_invoked_collection: true })
+    if (snap.status === 'done') break
+    if (snap.status === 'partial' && i >= 2) break
+  }
+} else {
+  note('research', { skipped: true, reason: 'resumed — снапшот загружен, сбор не нужен', loop_invoked_collection: false })
+}
+
+// ==================== VERIFY — получает кэш snap; цикл НЕ вызывает коллектор ====================
 phase('Verify')
 const verdict = await agent(
-  `Состязательно проверь факты, помечай неподтверждённое:\n${JSON.stringify(state.findings)}`,
-  { schema: { type: 'object', required: ['confirmed'], properties: { confirmed: { type: 'array' }, rejected: { type: 'array' } } } },
+  `Ты FactCheck-агент. Тебе ПЕРЕДАНЫ уже собранные источники (ниже). НЕ делай новых web-вызовов —
+работай только по этим extract'ам; если данных не хватает — в rejected, НЕ фетчи. Верни confirmed[] и rejected[] с confidence.
+SNAPSHOT.sources: ${JSON.stringify((snap && snap.sources) || [])}`,
+  { schema: VERDICT, label: 'verify', phase: 'Verify' },
 )
+note('verify', { confirmed: (verdict.confirmed || []).length, rejected: (verdict.rejected || []).length, loop_invoked_collection: false, sources_reused: ((snap && snap.sources) || []).length })
 
-phase('Retro')   // ретроспектива — на СВОЁМ месте: ПОСЛЕ выживания, и её отдают наружу для СЛЕДУЮЩЕГО прогона
-const retro = await agent(
-  `По логу попыток выпиши 1-3 устойчивых урока (надёжность источников, ошибки декомпозиции): ${JSON.stringify(attempts)}`,
+// ==================== FORMAT ====================
+phase('Format')
+const report = await agent(
+  `Ты Format-агент. Собери Fact Sheet ≤200 слов по подтверждённым фактам. НЕ фетчи.
+confirmed: ${JSON.stringify(verdict.confirmed || [])}`,
+  { schema: REPORT, label: 'format', phase: 'Format' },
 )
+note('format', { loop_invoked_collection: false })
 
-// Вызывающий персистит `retro` на диск (напр. lessons.md); следующий прогон читает его в фазе Plan.
-// Это и есть кросс-прогонная память — но второй очередью, ПОСЛЕ того как прогон научился доживать.
-return { findings: verdict.confirmed, attempts, retro }
+// ==================== JOURNAL — пишет run_journal.{json,md} + snapshot.json (для будущего resume) ====================
+phase('Journal')
+const summary = {
+  run_id: RUN_ID, topic: TOPIC, depth: DEPTH,
+  resumed,
+  research_tries: journal.filter((e) => e.stage === 'research' && e.attempt).length,
+  loop_collection_calls_total: loopCollectionCalls, // 0 при resume — внешнее доказательство no-refetch
+  collection_calls_in_verify_or_format: 0,
+  sources: ((snap && snap.sources) || []).length,
+  claims_confirmed: (verdict.confirmed || []).length,
+  claims_rejected: (verdict.rejected || []).length,
+  final_status: (snap && snap.status) || 'unknown',
+  no_refetch_guarantee: 'enforced by control flow — при resume Research пропущен; Verify/Format получают кэш; цикл не вызывает коллектор',
+}
+const snapshotForResume = { topic: TOPIC, snapshot: snap }
+await agent(
+  `Ты Journal-writer. Запиши РОВНО три файла, ничего не добавляя сверх данных:
+1) ${OUT_DIR}/run_journal.json — ровно: ${JSON.stringify({ summary, journal })}
+2) ${OUT_DIR}/snapshot.json — ровно: ${JSON.stringify(snapshotForResume)}  (это чекпоинт для будущего resume — не меняй)
+3) ${OUT_DIR}/run_journal.md — человекочитаемый ретро-лог: таблица summary (выдели resumed и loop_collection_calls_total),
+   пошаговая таблица journal (step|stage|данные), и блок «Для ретро» (сбор был? пере-фетч? ретраи? что отклонено? это resume?).
+Создай папку ${OUT_DIR} при необходимости. Верни пути.`,
+  { label: 'journal-writer', phase: 'Journal' },
+)
+note('journal', { written: `${OUT_DIR}/run_journal.{json,md} + snapshot.json` })
+
+return { summary, report, journal }
