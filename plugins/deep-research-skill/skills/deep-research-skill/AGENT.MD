@@ -1322,6 +1322,72 @@ class TimeoutManager:
 
 ## 8. Recovery: Full Crash Protocol
 
+### 8.0 Checkpoint State & Resume (the resume anchor)
+
+A checkpoint is "resumable" only if it serializes the actual collected work, not a prose milestone.
+Therefore **every** `checkpoints/cp_<NN>_<stage>.md` MUST begin with a fenced ` ```json ` `state` block
+(canonical, machine-loadable), followed by the human narrative. This block is the single source of truth
+for recovery — the heartbeat is only a hint.
+
+```json
+{
+  "checkpoint_version": "1.0",
+  "run_id": "whoop-cdek-20260607-b7e2",
+  "created_utc": "2026-06-07T10:02:40Z",
+  "task_fingerprint": "<sha1(normalize(question|route|depth|scope))>",
+  "stage": "cp_01_raw", "phase_completed": 2, "next_phase": 3,
+  "last_gate": {"id": "G1", "verdict": "PASS"},
+  "budget": {"limit_usd": 0.20, "spent_usd": 0.0, "loads_used": 4, "loads_cap": 6},
+  "task_frame": {"question": "...", "route": "B", "depth": "Standard",
+                 "scope": ["cdek.shopping"], "acceptance_criteria": ["..."]},
+  "subtasks": [{"id": "ST-1", "type": "SEARCH", "status": "done"}],
+  "sources":  [{"id": "S1", "url": "https://...", "tier": "S", "fetched_via": "jina", "status": "rendered",
+                "created_utc": "...", "raw_path": "raw/S1.txt", "extract": {"...": "..."}}],
+  "claims":   [{"id": "C1", "text": "...", "category": "verified", "confidence": 4,
+                "sources": ["S1", "S2"], "status": "confirmed"}],
+  "open_items": ["cross-check Peak/One on a 2nd same-site listing"],
+  "resume_instruction": "Sources S1-S2 already rendered — do NOT re-fetch; continue at Phase 3 FCA."
+}
+```
+
+**Write rule.** Emit a checkpoint at every gate boundary (post-collection → `cp_01_raw`, post-processing
+→ `cp_02_processed`, post-analysis → `cp_03_draft`, post-synthesis → `cp_04_reviewed`, final), plus on
+graceful-degradation finalize and before any human escalation. Write the `state` block FIRST, verify it
+parses, then the narrative. Never overwrite a prior `NN`. The `sources[].extract` field carries the actual
+gathered data — that is what makes resume free of re-collection.
+
+**Resume entry point (runs in Phase 0, before any planning):**
+1. Scan `./research_output/checkpoints/` for `cp_*.md`. None → fresh run.
+2. Pick the highest `NN` whose `state` block PARSES and passes schema validation. If the latest is
+   malformed/partial → fall back to `NN-1`; if none valid → fresh run (note it in the audit trail).
+3. **Fingerprint guard:** `task_fingerprint == sha1(normalize(current question|route|depth|scope))`?
+   - match → RESUME; announce `↩ Resuming <run_id> from <stage> (phase <next_phase>)`.
+   - mismatch → a *different* task: start a fresh run dir; DO NOT load or clobber the other state.
+4. Rehydrate `task_frame`, `subtasks`, `sources` (with extracts), `claims`. Jump to `next_phase`;
+   do only `open_items` + remaining subtasks.
+
+**Integrity rules (each prevents a specific failure):**
+- highest-valid-`NN` + `NN-1` fallback → never resume a half-written checkpoint.
+- fingerprint guard → never resume an unrelated task's state into the wrong question.
+- **budget carry-forward:** `spent_usd` and `loads_used` are CARRIED, never reset — otherwise an
+  interrupted run resumes with a fresh budget and blows past its cap.
+- **collected sources are READ-ONLY on resume:** a source with `status` `rendered`/`done` and an
+  `extract` MUST be served from `state` — **re-fetching it is a protocol violation, not an
+  optimization.** The only sanctioned new fetch on resume is (a) independent cross-verification of a
+  *flagged* claim, or (b) a staleness re-check (below). Both MUST increment `new_collection_calls` —
+  never a silent fetch reported as `0`.
+- **staleness:** time-sensitive sources (prices, "latest", quotes) older than the freshness window
+  (Quick 24h · Standard 7d · Deep 14d) are RE-VERIFIED on resume, not trusted blindly; flag any
+  resumed-stale value in the final report.
+
+> **Known limitation (observed in testing).** Native execution does NOT *enforce* read-only reuse:
+> a model with web access may re-fetch already-collected sources and under-report the count (log `0`
+> while actually fetching). So native-mode resume reliably delivers **state continuity + integrity
+> guards (fingerprint match/mismatch, no-clobber, no fabricated facts)** but **not guaranteed token
+> savings**. Hard enforcement requires the supervised control-loop
+> (`examples/supervised_orchestrator.workflow.js`), where the orchestrator passes the `snapshot` and
+> never re-invokes collection, and the fetch count is observed externally rather than self-reported.
+
 ### 8.1 On Crash / Interruption
 
 ```
@@ -1329,19 +1395,20 @@ PROTOCOL: SYSTEM_RECOVERY
 
 INPUT: task_id, latest_heartbeat_path
 
-STEP 1: READ latest heartbeat
-  → Parse heartbeat file
-  → Extract: current_checkpoint, active_subtasks, progress_pct, issues
+STEP 1: LOAD latest checkpoint state (§8.0)
+  → Scan checkpoints/ ; pick highest cp_NN whose ```json `state` block is VALID
+  → Parse state: task_frame, subtasks, sources (with extracts), claims, budget, next_phase
+  → Heartbeat is only a hint; the `state` block is the source of truth for resume
 
-STEP 2: IDENTIFY last completed checkpoint
-  → If current_checkpoint is complete → resume from next
-  → If current_checkpoint is partial → re-evaluate
-  → If no heartbeat found → start from cp_01_raw or restart
+STEP 2: IDENTIFY resume point
+  → task_fingerprint must match the current request (else: different task → fresh run dir, do not clobber)
+  → Resume from state.next_phase; carry budget.spent_usd + loads_used forward (never reset)
+  → If no valid checkpoint → start from cp_01_raw / restart
 
-STEP 3: VALIDATE checkpoint integrity
-  → Check all artifacts exist
-  → Verify checksums
-  → If corrupted → rollback to previous checkpoint
+STEP 3: VALIDATE integrity (§8.0 rules)
+  → highest-valid-NN; if the latest `state` is malformed/partial → fall back to NN-1
+  → Re-verify stale time-sensitive sources (freshness window) instead of trusting blindly
+  → Sources with status rendered/done are reused (NOT re-fetched) — the point of resume
 
 STEP 4: RESTORE agent registry
   → Load agent states from checkpoint

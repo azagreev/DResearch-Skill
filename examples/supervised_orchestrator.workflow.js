@@ -18,10 +18,9 @@
  *   - «агент-роль»  : живёт в контексте воркера, делит его судьбу, добавляет нагрузку на контекст.
  *   - «control-loop»: живёт вне воркера, ловит его падение как ДАННЫЕ, переспавнивает в ЧИСТЫЙ контекст.
  *
- * ⚠️ Самое тонкое место — `checkpoint`. Здесь это строковый токен-заглушка. Чтобы «возобнови
- *    с cp_03» не было пустыми словами, воркер должен уметь СЕРИАЛИЗОВАТЬ собранное состояние
- *    (источники, извлечённые факты, прогресс по subtask'ам) во что-то, что следующий спавн
- *    прочитает и продолжит. Без этого respawn = старт с нуля. См. TODO ниже.
+ * ✅ `snapshot` — реальный сериализованный снимок состояния (sources с extract'ами, claims,
+ *    budget, next_phase), а НЕ строка-заглушка. correct() прокидывает его в новый спавн, поэтому
+ *    переспавн продолжает с собранных данных, НЕ пере-собирая источники. Схема — AGENT.MD §8.0.
  *
  * Запуск (когда checkpoint станет реальным):  Workflow({ scriptPath: '<этот файл>', args: { topic: '...' } })
  */
@@ -36,11 +35,16 @@ export const meta = {
 // а не угадывает его по heartbeat-файлу, который мог и не записаться (тигр T3 из пре-мортема).
 const RESULT = {
   type: 'object',
-  required: ['status', 'blockedBy', 'checkpoint', 'findings', 'spent', 'quality'],
+  required: ['status', 'blockedBy', 'snapshot', 'findings', 'spent', 'quality'],
   properties: {
     status:     { enum: ['done', 'partial', 'blocked'] },
     blockedBy:  { enum: ['budget', 'timeout', 'paywall', 'low_quality', 'none'] },
-    checkpoint: { type: 'string' },                       // TODO: заменить на реальный сериализованный state
+    snapshot:   { type: 'object',                         // сериализованный resume-снимок (AGENT.MD §8.0)
+                  properties: { stage:      { type: 'string' },
+                                next_phase: { type: 'number' },
+                                sources:    { type: 'array', items: { type: 'object' } },  // с extract'ами
+                                claims:     { type: 'array', items: { type: 'object' } },
+                                budget:     { type: 'object' } } },
     findings:   { type: 'array', items: { type: 'object' } },
     spent:      { type: 'number' },
     quality:    { type: 'number' },                       // 0-100
@@ -50,11 +54,15 @@ const RESULT = {
 // ЭТО и есть «корректирующий агент» — но это КОД, не LLM-персона, и он живёт СНАРУЖИ
 // контекста воркера, поэтому переживает его смерть. Детерминированное правило коррекции:
 function correct(prev) {
+  // Прокидываем РЕАЛЬНЫЙ снимок в новый спавн: уже собранные sources/claims не пере-собираются.
+  const resume = prev?.snapshot
+    ? `Возобнови по сохранённому состоянию (НЕ пере-собирай sources со status rendered/done):\n${JSON.stringify(prev.snapshot)}\n`
+    : ''
   switch (prev?.blockedBy) {
-    case 'budget':      return `Возобнови с ${prev.checkpoint}. Бюджет на исходе: только Tier-1, финализируй по собранному.`
-    case 'timeout':     return `Возобнови с ${prev.checkpoint}. Источник завис: пропусти, failover на следующий tier.`
-    case 'paywall':     return `Возобнови с ${prev.checkpoint}. Paywall: НЕ эскалируй человеку, возьми открытые альтернативы.`
-    case 'low_quality': return `Возобнови с ${prev.checkpoint}. quality<70: переразбей слабую subtask на узкие запросы.`
+    case 'budget':      return `${resume}Бюджет на исходе: только Tier-1, финализируй по собранному.`
+    case 'timeout':     return `${resume}Источник завис: пропусти, failover на следующий tier.`
+    case 'paywall':     return `${resume}Paywall: НЕ эскалируй человеку, возьми открытые альтернативы.`
+    case 'low_quality': return `${resume}quality<70: переразбей слабую subtask на узкие запросы.`
     default:            return null                       // первая попытка — коррекции нет
   }
 }
@@ -75,7 +83,8 @@ for (let i = 1; i <= 4; i++) {                            // bounded respawn —
   } catch (e) {
     // Воркер умер (throw BudgetExceededException и т.п.). Цикл — жив, он здесь, снаружи.
     // Реальный код классифицирует причину по `e`; здесь консервативно считаем бюджетом.
-    state = { status: 'blocked', blockedBy: 'budget', checkpoint: state?.checkpoint ?? 'cp_00',
+    state = { status: 'blocked', blockedBy: 'budget',
+              snapshot: state?.snapshot ?? { stage: 'cp_00', next_phase: 1, sources: [], claims: [], budget: {} },
               findings: state?.findings ?? [], spent: 0, quality: 0 }
   }
   attempts.push({ try: i, status: state.status, blockedBy: state.blockedBy, spent: state.spent })
