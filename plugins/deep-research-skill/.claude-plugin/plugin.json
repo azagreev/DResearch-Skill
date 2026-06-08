@@ -1,6 +1,6 @@
 {
   "name": "deep-research-skill",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Deep research skill (testing release): 6-фазный workflow (анализ задачи, декомпозиция, сбор, фактчекинг, синтез, вывод), cost-first выбор инструментов, evidence-based отчёты с citations и confidence scoring, anti-hallucination протокол.",
   "author": {
     "name": "Andrey Zagreev",

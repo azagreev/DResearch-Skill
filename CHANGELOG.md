@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-06-08
+
+Supervised orchestrator: staleness re-verify on resume + an honest negative finding on hard no-fetch.
+
+### Added
+- **Staleness re-verify on resume** (`examples/supervised_orchestrator.workflow.js`): when a resumed
+  snapshot's `time_sensitive` sources are older than the freshness window (Quick 24h / Standard 7d /
+  Deep 14d), the loop re-collects ONLY those — a bounded re-fetch that increments
+  `loop_collection_calls_total` (never silent). "Now" is passed via `args.now` (ISO); the script reads
+  no system clock. Snapshot schema gains `created_utc` + `time_sensitive`.
+- `hard_nofetch` mode + staleness fields in the run journal (for retro).
+- Forward-hook: `.claude/agents/no-fetch-analyst.md` (tool-restricted: Read/Grep/Glob, no web).
+
+### Finding (honest negative result)
+- **Hard no-fetch via a custom restricted `agentType` does NOT work in the current Workflow runtime.**
+  Verified by smoke test: `agent({agentType})` resolves only built-in types (claude, Explore,
+  general-purpose, Plan, …) — all of which have web tools — and does not load custom `.claude/agents/*.md`.
+  So Verify/Format run in **soft** mode (instruction-only) by default; `hardNoFetch:true` is opt-in and
+  gracefully falls back to soft (recorded in the journal) instead of breaking. Real enforcement remains
+  loop-level (the loop never re-invokes collection).
+
+### Changed
+- `loop_collection_calls_total` on resume is no longer always 0 — it becomes 1 if a staleness re-verify
+  fired (correct: re-verify IS collection, and it's externally counted).
+
 ## [0.3.1] - 2026-06-08
 
 Honesty & consistency patch (no behavior change). Removes overclaims surfaced by an internal audit.
@@ -110,6 +135,7 @@ multi-agent resilience layer is not yet executed as real processes — see Known
   single Claude context; true fault tolerance requires the external control-loop (see `examples/`)
 - The checkpoint token is a placeholder; resumable state serialization is not yet implemented
 
+[0.4.0]: https://github.com/azagreev/DResearch-Skill/releases/tag/v0.4.0
 [0.3.1]: https://github.com/azagreev/DResearch-Skill/releases/tag/v0.3.1
 [0.3.0]: https://github.com/azagreev/DResearch-Skill/releases/tag/v0.3.0
 [0.2.0]: https://github.com/azagreev/DResearch-Skill/releases/tag/v0.2.0
