@@ -13,19 +13,30 @@ Phase 1 (модель данных + state) — **дизайн до сигнат
 ### Added
 - **`docs/PHASE1_MODEL_STATE.md`** — контракт Phase 1: claim-центричный JSON-snapshot, расширяющий
   AGENT.MD §8.0 (аддитивно: `clusters[]`, `scores{}`, `time_sensitive`, `contradicting_sources`,
-  `language`, DAG-поля subtask'ов); 6 категорий фактчека ↔ enum; fingerprint-алгоритм; 5 resume-инвариантов
-  с функциями-энфорсерами; правила round-trip/валидации; atomic-запись checkpoint.
-- **`engine/model.py`** — dataclasses + enums определены полностью (Snapshot/TaskFrame/Source/Claim/
-  EvidenceCluster/Budget/SubTask/ScoreComponents + 10 enums; `ClaimCategory` = 6 категорий из
-  `factcheck_system.md §4.1` с label+emoji). `snapshot_to_dict`/`snapshot_from_dict`/`validate_snapshot` —
-  сигнатуры (`NotImplementedError`).
+  `role`, `language`, DAG-поля subtask'ов); 6 категорий фактчека ↔ enum; fingerprint-алгоритм;
+  5 resume-инвариантов с функциями-энфорсерами; правила round-trip/валидации; atomic-запись checkpoint.
+- **`engine/model.py`** — dataclasses + 11 enums определены полностью (Snapshot/TaskFrame/Source/Claim/
+  EvidenceCluster/Budget/SubTask/ScoreComponents; `ClaimCategory` = 6 категорий из `factcheck_system.md §4.1`
+  с label+emoji). Сериализация (`snapshot_to_dict`/`snapshot_from_dict`/`validate_snapshot`) — сигнатуры.
 - **`engine/state.py`** — поверхность state-машины как сигнатуры: `compute_fingerprint`, `resume_or_fresh`
   (→ `ResumeDecision{FRESH|RESUME|RESUME_RESTALE}`), `find_latest_checkpoint`, `save/load_checkpoint`,
   `carry_budget`, `stale_source_ids`, `assert_sources_readonly`. `STALENESS_WINDOW_HOURS` по depth задан.
+- **`engine/policy.py`** (Phase 6) — роль-зависимая reportability: `disposition(claim, report_mode) ->
+  Disposition` (сигнатура + таблица-контракт); enums `ReportMode{findings,debunk,mixed}` и
+  `Disposition{include,include_with_flag,include_as_correction,exclude_but_record,trigger_revision}`.
+
+### Changed (по итогам code-review + дизайн-критики FALSE-исключения)
+- **`ClaimCategory` значения → lowercase** (`"verified"` …), совпадают с примером AGENT.MD §8.0 — старые
+  checkpoint'ы грузятся без алиасинга (фикс находки ревью: было UPPERCASE vs lowercase в §8.0).
+- **Reportability больше НЕ статична.** Удалён `REPORTABLE_CATEGORIES` (он выкидывал любой FALSE).
+  Добавлены роль claim'а `ClaimRole{own_finding,external_claim}` и роль-зависимая политика в `policy.py`:
+  FALSE *внешнего* утверждения → `INCLUDE_AS_CORRECTION` (дебанк = ценность), FALSE *своего вывода* →
+  `TRIGGER_REVISION`. Политика вынесена в Phase 6 (render), не в модель данных.
 
 ### Verified
-- `engine.model` / `engine.state` импортируются чисто; Snapshot инстанцируется (16 полей); 6 категорий и
-  окна staleness (Standard = 168ч) совпадают с контрактом; `python -m engine` работает.
+- `engine.model`/`engine.state`/`engine.policy` импортируются чисто; Snapshot=16 полей, Claim=10 (с `role`),
+  model.py=11 enums; `ClaimCategory` значения lowercase; `REPORTABLE_CATEGORIES` отсутствует; `disposition()`
+  и сериализация — `NotImplementedError`; окна staleness (Standard=168ч) совпадают; `python -m engine` работает.
 
 ## [0.5.0] - 2026-06-09
 

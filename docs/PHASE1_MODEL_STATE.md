@@ -44,7 +44,7 @@
   ],
   "claims": [
     {
-      "id": "C1", "text": "...", "category": "VERIFIED", "confidence": 4,
+      "id": "C1", "text": "...", "role": "own_finding", "category": "verified", "confidence": 4,
       "sources": ["S1", "S2"], "contradicting_sources": [],
       "status": "confirmed", "cluster_id": "K1", "verdict_explanation": "..."
     }
@@ -62,7 +62,7 @@
 |---|---|---|
 | `task_frame` | `language` | язык вывода (скилл адаптируется к языку пользователя) |
 | `sources[]` | `title`, `published_at`, `date_confidence`, `time_sensitive`, `scores{}` | staleness-re-verify + реальный скоринг Phase 3 |
-| `claims[]` | `contradicting_sources`, `cluster_id`, `verdict_explanation` | детект противоречий + evidence-кластеры Phase 4 |
+| `claims[]` | `role`, `contradicting_sources`, `cluster_id`, `verdict_explanation` | роль claim'а (own/external) + детект противоречий + кластеры Phase 4 |
 | top-level | `clusters[]` | cluster-first вывод Phase 4/6 |
 | `subtasks[]` | `depends_on`, `description` | DAG зависимостей Phase 1 |
 
@@ -70,23 +70,38 @@
 
 ## 2. Перечисления (enums)
 
-**ClaimCategory** — 6 категорий фактчека (`references/factcheck_system.md §4.1`), машинный ключ → (label, emoji):
+**ClaimCategory** — 6 категорий фактчека (`references/factcheck_system.md §4.1`). Имена членов UPPERCASE, **значения lowercase** (совпадают со §8.0: `"category": "verified"` → старые checkpoint'ы грузятся без алиасинга):
 
-| Ключ | Label | Emoji | В отчёт? |
+| Член | Значение | Label | Emoji |
 |---|---|---|---|
-| `VERIFIED` | ВЕРНО | ✅ | да |
-| `FALSE` | НЕВЕРНО | ❌ | **нет** (исключается) |
-| `OUTDATED` | УСТАРЕЛО | ⏰ | да (с пометкой) |
-| `INCOMPLETE` | НЕПОЛНО | ⚠️ | да (с контекстом) |
-| `OPINION` | ОДНА ИЗ ТОЧЕК ЗРЕНИЯ | 🔮 | да (как мнение) |
-| `UNVERIFIED` | НЕ УДАЛОСЬ ПРОВЕРИТЬ | ❓ | да (с флагом) |
+| `VERIFIED` | `verified` | ВЕРНО | ✅ |
+| `FALSE` | `false` | НЕВЕРНО | ❌ |
+| `OUTDATED` | `outdated` | УСТАРЕЛО | ⏰ |
+| `INCOMPLETE` | `incomplete` | НЕПОЛНО | ⚠️ |
+| `OPINION` | `opinion` | ОДНА ИЗ ТОЧЕК ЗРЕНИЯ | 🔮 |
+| `UNVERIFIED` | `unverified` | НЕ УДАЛОСЬ ПРОВЕРИТЬ | ❓ |
 
-`REPORTABLE_CATEGORIES = всё кроме FALSE`.
+**ClaimRole** — `own_finding` (рисёрч сам утверждает) | `external_claim` (внешнее утверждение на проверке). Определяет судьбу FALSE (см. ниже).
+
+> ⚠️ Попадание в отчёт — **НЕ** статическое свойство категории. Бывший `REPORTABLE_CATEGORIES` удалён: он ошибочно выкидывал любой FALSE, тогда как FALSE *внешнего* утверждения — это и есть смысл дебанка, а FALSE *своего вывода* должен идти на пересмотр, а не молча исчезать. Политика — роль-зависимая, в Phase 6.
+
+### Reportability — политика Phase 6 (`engine/policy.py`)
+`disposition(claim, report_mode) -> Disposition`:
+
+| category | role | → disposition |
+|---|---|---|
+| `VERIFIED` | любая | `INCLUDE` |
+| `OUTDATED` / `INCOMPLETE` / `OPINION` | любая | `INCLUDE_WITH_FLAG` |
+| `UNVERIFIED` | любая | `INCLUDE_WITH_FLAG` (в `findings` может `EXCLUDE_BUT_RECORD`) |
+| `FALSE` | `external_claim` | `INCLUDE_AS_CORRECTION` (дебанк = ценность) |
+| `FALSE` | `own_finding` | `TRIGGER_REVISION` → при исчерпании `EXCLUDE_BUT_RECORD` |
+
+`report_mode ∈ {findings, debunk, mixed}` сдвигает пограничные случаи, но **не отменяет** ветку FALSE×role. `EXCLUDE_BUT_RECORD` всегда пишет в память (Phase 5), чтобы тот же claim не всплыл снова.
 
 Прочие enums: `Route{A,B,C,D}`, `Depth{Quick,Standard,Deep,Exhaustive}`, `Tier{S,A,B,C,D}`,
 `SubTaskType{SEARCH,EXTRACT,ANALYZE,COMPARE,SYNTHESIZE,VALIDATE,FORMAT,META}`,
 `SubTaskStatus{pending,in_progress,done,failed}`, `SourceStatus{pending,rendered,failed}`,
-`DateConfidence{high,med,low}`, `ClaimStatus{pending,confirmed,rejected}`, `GateVerdict{PASS,WARN,FAIL}`.
+`DateConfidence{high,med,low}`, `ClaimStatus{pending,confirmed,rejected}`, `ClaimRole{own_finding,external_claim}`, `GateVerdict{PASS,WARN,FAIL}`.
 
 **confidence** — целое 1..5 (1=Speculative … 5=Certain), визуализация ⚪🔴🟡🟢🔵.
 
@@ -139,5 +154,7 @@ compute_fingerprint(tf)       = sha1(normalize_for_fingerprint(tf)).hexdigest()
 ---
 
 ## 7. Что НЕ входит в Phase 1
-Скоринг (`score.py`, Phase 3), фактчек-присвоение категорий (`factcheck.py`, Phase 4), кластеризация
-(`cluster.py`, Phase 4), кросс-прогонная память (`memory.py`, Phase 5). Phase 1 даёт только модель + state-машину.
+Скоринг (`score.py`, Phase 3), фактчек-присвоение категорий/ролей (`factcheck.py`, Phase 4), кластеризация
+(`cluster.py`, Phase 4), кросс-прогонная память (`memory.py`, Phase 5), **disposition-политика**
+(`engine/policy.py` — сигнатура `disposition()` уже зафиксирована, реализация в Phase 6). Phase 1 даёт
+только модель данных + state-машину (сигнатуры).

@@ -77,14 +77,16 @@ class DateConfidence(str, Enum):
 class ClaimCategory(str, Enum):
     """The 6 fact-check categories (references/factcheck_system.md §4.1).
 
-    Stable machine keys; human label + emoji live in CATEGORY_LABELS.
+    Member NAMES are uppercase for readability; serialized VALUES are lowercase
+    to match the AGENT.MD §8.0 checkpoint example (`"category": "verified"`), so
+    older §8.0 checkpoints load without aliasing. Label + emoji: CATEGORY_LABELS.
     """
-    VERIFIED = "VERIFIED"      # ВЕРНО
-    FALSE = "FALSE"            # НЕВЕРНО
-    OUTDATED = "OUTDATED"      # УСТАРЕЛО
-    INCOMPLETE = "INCOMPLETE"  # НЕПОЛНО
-    OPINION = "OPINION"        # ОДНА ИЗ ТОЧЕК ЗРЕНИЯ
-    UNVERIFIED = "UNVERIFIED"  # НЕ УДАЛОСЬ ПРОВЕРИТЬ
+    VERIFIED = "verified"      # ВЕРНО
+    FALSE = "false"            # НЕВЕРНО
+    OUTDATED = "outdated"      # УСТАРЕЛО
+    INCOMPLETE = "incomplete"  # НЕПОЛНО
+    OPINION = "opinion"        # ОДНА ИЗ ТОЧЕК ЗРЕНИЯ
+    UNVERIFIED = "unverified"  # НЕ УДАЛОСЬ ПРОВЕРИТЬ
 
 
 # machine key -> (Russian label, emoji)
@@ -97,22 +99,24 @@ CATEGORY_LABELS: Dict["ClaimCategory", Tuple[str, str]] = {
     ClaimCategory.UNVERIFIED: ("НЕ УДАЛОСЬ ПРОВЕРИТЬ", "❓"),
 }
 
-# Categories allowed into the final report. FALSE is excluded by contract.
-REPORTABLE_CATEGORIES = frozenset(
-    {
-        ClaimCategory.VERIFIED,
-        ClaimCategory.OUTDATED,
-        ClaimCategory.INCOMPLETE,
-        ClaimCategory.OPINION,
-        ClaimCategory.UNVERIFIED,
-    }
-)
+# NOTE: reportability is NOT a static property of a category. Whether a claim
+# enters the report depends on the claim's ROLE (own finding vs external claim
+# under review) and the report mode — e.g. a FALSE *external* claim is the whole
+# point of a debunk, while a FALSE *own finding* must trigger revision. That
+# role-aware policy lives in engine/policy.py (Phase 6), not here. See
+# docs/PHASE1_MODEL_STATE.md §"Reportability".
 
 
 class ClaimStatus(str, Enum):
     PENDING = "pending"
     CONFIRMED = "confirmed"
     REJECTED = "rejected"
+
+
+class ClaimRole(str, Enum):
+    """Whose claim is this — decides how a FALSE verdict is handled."""
+    OWN_FINDING = "own_finding"        # the research itself asserts it (synthesized)
+    EXTERNAL_CLAIM = "external_claim"  # a third-party claim under adjudication
 
 
 class GateVerdict(str, Enum):
@@ -195,6 +199,7 @@ class Source:
 class Claim:
     id: str                         # "C1"
     text: str
+    role: ClaimRole = ClaimRole.OWN_FINDING
     category: ClaimCategory = ClaimCategory.UNVERIFIED
     confidence: int = 1             # 1..5
     sources: List[str] = field(default_factory=list)                # supporting Source ids
