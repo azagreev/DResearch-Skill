@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Phase 1 (модель данных + state) — **дизайн до сигнатур и JSON-контрактов, перед кодом**. Логика
+(serialize/validate/fingerprint/resume) ещё не реализована.
+
+### Added
+- **`docs/PHASE1_MODEL_STATE.md`** — контракт Phase 1: claim-центричный JSON-snapshot, расширяющий
+  AGENT.MD §8.0 (аддитивно: `clusters[]`, `scores{}`, `time_sensitive`, `contradicting_sources`,
+  `language`, DAG-поля subtask'ов); 6 категорий фактчека ↔ enum; fingerprint-алгоритм; 5 resume-инвариантов
+  с функциями-энфорсерами; правила round-trip/валидации; atomic-запись checkpoint.
+- **`engine/model.py`** — dataclasses + enums определены полностью (Snapshot/TaskFrame/Source/Claim/
+  EvidenceCluster/Budget/SubTask/ScoreComponents + 10 enums; `ClaimCategory` = 6 категорий из
+  `factcheck_system.md §4.1` с label+emoji). `snapshot_to_dict`/`snapshot_from_dict`/`validate_snapshot` —
+  сигнатуры (`NotImplementedError`).
+- **`engine/state.py`** — поверхность state-машины как сигнатуры: `compute_fingerprint`, `resume_or_fresh`
+  (→ `ResumeDecision{FRESH|RESUME|RESUME_RESTALE}`), `find_latest_checkpoint`, `save/load_checkpoint`,
+  `carry_budget`, `stale_source_ids`, `assert_sources_readonly`. `STALENESS_WINDOW_HOURS` по depth задан.
+
+### Verified
+- `engine.model` / `engine.state` импортируются чисто; Snapshot инстанцируется (16 полей); 6 категорий и
+  окна staleness (Standard = 168ч) совпадают с контрактом; `python -m engine` работает.
+
 ## [0.5.0] - 2026-06-09
 
 Phase 0 полной пересборки (spec-only → claim-центричный исполняемый движок): план, STEP 0, скелет
