@@ -17,6 +17,47 @@ runtime: claude.ai
 requires_mcp: browserbase (optional), file-system
 ---
 
+# STEP 0: STALE-CLONE SELF-CHECK — ВЫПОЛНИ ДО ЧТЕНИЯ ОСТАЛЬНОГО
+
+Прежде чем читать что-либо ниже, проверь, не загрузил ли ты этот SKILL.md из единственного известного «застрявшего» места — git-клона маркетплейса Claude Code.
+
+**Почему именно это:** `~/.claude/plugins/marketplaces/deep-research-skill/` — git-клон, который Claude Code авто-восстанавливает к `origin/main` на старте сессии. Он может отставать от версионированного кэша на один или несколько релизов (наблюдалось: `marketplace update` фетчит, но HEAD клона не двигается). Версионированный кэш `~/.claude/plugins/cache/deep-research-skill/deep-research-skill/<version>/` — свежий. Если читать спеку из отставшего клона, можно пропустить новые фазы/правила.
+
+**Проверка (PowerShell, Windows — основной путь автора):**
+```powershell
+$root = "$env:USERPROFILE\.claude\plugins\cache\deep-research-skill\deep-research-skill"
+$latest = Get-ChildItem -Directory $root -EA SilentlyContinue |
+  Sort-Object { try { [version]$_.Name } catch { [version]'0.0.0' } } | Select-Object -Last 1
+$cacheSkill = ""
+if ($latest) {
+  # Два layout'а кэша встречаются в реальности: nested ({version}\skills\deep-research-skill\SKILL.md)
+  # и flat ({version}\SKILL.md). Резолвим тот, что реально существует.
+  if     (Test-Path "$($latest.FullName)\skills\deep-research-skill\SKILL.md") { $cacheSkill = "$($latest.FullName)\skills\deep-research-skill\SKILL.md" }
+  elseif (Test-Path "$($latest.FullName)\SKILL.md")                            { $cacheSkill = "$($latest.FullName)\SKILL.md" }
+}
+"CACHE_SKILL_MD=$cacheSkill"
+```
+
+**Проверка (bash — macOS/Linux/Git Bash):**
+```bash
+ROOT="$HOME/.claude/plugins/cache/deep-research-skill/deep-research-skill"
+LATEST=$(find "$ROOT" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -V | tail -1)
+CACHE_SKILL_MD=""
+if [ -n "$LATEST" ]; then
+  if   [ -f "$LATEST/skills/deep-research-skill/SKILL.md" ]; then CACHE_SKILL_MD="$LATEST/skills/deep-research-skill/SKILL.md"
+  elif [ -f "$LATEST/SKILL.md" ];                            then CACHE_SKILL_MD="$LATEST/SKILL.md"; fi
+fi
+echo "CACHE_SKILL_MD=$CACHE_SKILL_MD"
+```
+
+**Решение:** если путь, из которого ты ТОЛЬКО ЧТО прочитал SKILL.md, содержит `\.claude\plugins\marketplaces\` (или `/.claude/plugins/marketplaces/`) И `CACHE_SKILL_MD` непустой → **СТОП**, перечитай `CACHE_SKILL_MD` и следуй ему вместо этого файла. Иначе — текущий SKILL.md свежий, продолжай.
+
+**Остальные пути — нормальные:** репозиторный checkout, ZIP-загрузка в claude.ai, `~/.codex/skills/`, прочие install-пути валидны — НЕ прерывайся и не «прыгай» на них.
+
+> ⚠️ Это митигирует случай «загрузился из отставшего клона». Корневую причину сломанного `marketplace update`/`re-add` (клон не двигает HEAD) этот self-check НЕ чинит — это ограничение платформы Claude Code, описанное в README → «Обновление плагина».
+
+---
+
 # Deep Research Skill
 
 > **Версия:** 0.4.0 | **Последнее обновление:** 2026-06-08

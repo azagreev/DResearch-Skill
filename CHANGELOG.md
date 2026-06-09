@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Начало полной пересборки слоя исполнения (spec-only → claim-центричный движок). Контракт сохраняется,
+переписывается слой ИСПОЛНЕНИЯ. План — `docs/REBUILD_PLAN.md`.
+
+### Added
+- **`docs/REBUILD_PLAN.md`** — source of truth пересборки: целевая архитектура `engine/` (stdlib-only,
+  claim-центричная, post-collection), сознательные отклонения от last30days, фазовый план 0.5.0→1.0.0,
+  три риска rebuild, инвариант «спека ↔ код синхронны».
+- **Phase 0 · STEP 0: STALE-CLONE SELF-CHECK** (`SKILL.md`, в самом верху) — самопроверка на загрузку
+  спеки из отставшего git-клона маркетплейса (`~/.claude/plugins/marketplaces/…`) вместо свежего
+  версионированного кэша. PowerShell (Windows) + bash варианты; обрабатывает nested vs flat layout кэша
+  (пути выверены по диску: nested `…/<version>/skills/deep-research-skill/SKILL.md`).
+
+### Note (honest scope)
+- STEP 0 митигирует только случай «загрузился из отставшего клона». Корневую причину сломанного
+  `marketplace update`/`re-add` (клон не двигает HEAD) он НЕ чинит — это ограничение платформы Claude Code
+  (см. README → «Обновление плагина»). Прочие фазы плана (движок, фактчек, память, eval) — впереди.
+
 ## [0.4.0] - 2026-06-08
 
 Supervised orchestrator: staleness re-verify on resume + an honest negative finding on hard no-fetch.
