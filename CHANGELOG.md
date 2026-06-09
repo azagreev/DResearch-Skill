@@ -5,24 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] - 2026-06-09
 
-Начало полной пересборки слоя исполнения (spec-only → claim-центричный движок). Контракт сохраняется,
-переписывается слой ИСПОЛНЕНИЯ. План — `docs/REBUILD_PLAN.md`.
+Phase 0 полной пересборки (spec-only → claim-центричный исполняемый движок): план, STEP 0, скелет
+`engine/` + runtime-контракт. Контракт сохраняется; переписывается слой ИСПОЛНЕНИЯ. План — `docs/REBUILD_PLAN.md`.
 
 ### Added
 - **`docs/REBUILD_PLAN.md`** — source of truth пересборки: целевая архитектура `engine/` (stdlib-only,
   claim-центричная, post-collection), сознательные отклонения от last30days, фазовый план 0.5.0→1.0.0,
   три риска rebuild, инвариант «спека ↔ код синхронны».
-- **Phase 0 · STEP 0: STALE-CLONE SELF-CHECK** (`SKILL.md`, в самом верху) — самопроверка на загрузку
-  спеки из отставшего git-клона маркетплейса (`~/.claude/plugins/marketplaces/…`) вместо свежего
-  версионированного кэша. PowerShell (Windows) + bash варианты; обрабатывает nested vs flat layout кэша
-  (пути выверены по диску: nested `…/<version>/skills/deep-research-skill/SKILL.md`).
+- **STEP 0: STALE-CLONE SELF-CHECK** (`SKILL.md`, в самом верху) — самопроверка на загрузку спеки из
+  отставшего git-клона маркетплейса (`~/.claude/plugins/marketplaces/…`) вместо свежего версионированного
+  кэша. PowerShell (Windows) + bash варианты; обрабатывает nested vs flat layout кэша (пути выверены по
+  диску: nested `…/<version>/skills/deep-research-skill/SKILL.md`).
+- **Скелет `engine/`** (`plugins/deep-research-skill/skills/deep-research-skill/engine/`) — stdlib-only
+  Python-пакет (≥3.10): `python -m engine` с `--version` и `doctor` (JSON-диагностика рантайма). Пайплайн-
+  команды (`checkpoint/resume/ingest/rank/score/factcheck/memory/eval/report`) зарегистрированы как
+  заглушки (exit 2, «planned in Phase N») — поверхность CLI зафиксирована, загорается фаза за фазой.
+- **RUNTIME CONTRACT** (`SKILL.md`) — проба `python -m engine doctor` решает: engine-режим или **graceful
+  prose-only fallback**. claude.ai без code-execution и любой хост без Python продолжают работать как раньше.
+- **`NOTICE`** — атрибуция MIT: алгоритмы-референсы (RRF/MMR/nDCG/jaccard/FTS5) изучены по MIT-скиллу
+  last30days; код движка написан с нуля, исходники не копировались.
 
 ### Note (honest scope)
-- STEP 0 митигирует только случай «загрузился из отставшего клона». Корневую причину сломанного
-  `marketplace update`/`re-add` (клон не двигает HEAD) он НЕ чинит — это ограничение платформы Claude Code
-  (см. README → «Обновление плагина»). Прочие фазы плана (движок, фактчек, память, eval) — впереди.
+- В 0.5.0 функциональны только `doctor`/`--version`; реального рисёрча движок ещё не делает — скилл
+  работает в prose-only режиме. STEP 0 митигирует только «загрузку из отставшего клона»; корневую причину
+  сломанного `marketplace update`/`re-add` (клон не двигает HEAD) он НЕ чинит — это ограничение платформы
+  Claude Code (см. README → «Обновление плагина»). Фазы 1–6 (state, обработка, скоринг, фактчек, память,
+  вывод) — впереди.
 
 ## [0.4.0] - 2026-06-08
 
@@ -154,6 +164,7 @@ multi-agent resilience layer is not yet executed as real processes — see Known
   single Claude context; true fault tolerance requires the external control-loop (see `examples/`)
 - The checkpoint token is a placeholder; resumable state serialization is not yet implemented
 
+[0.5.0]: https://github.com/azagreev/DResearch-Skill/releases/tag/v0.5.0
 [0.4.0]: https://github.com/azagreev/DResearch-Skill/releases/tag/v0.4.0
 [0.3.1]: https://github.com/azagreev/DResearch-Skill/releases/tag/v0.3.1
 [0.3.0]: https://github.com/azagreev/DResearch-Skill/releases/tag/v0.3.0

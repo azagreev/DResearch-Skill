@@ -19,6 +19,12 @@ research_output/
 .env.local
 *.key
 
+# Python (engine/)
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
 # Node (if tooling is added later)
 node_modules/
 npm-debug.log*

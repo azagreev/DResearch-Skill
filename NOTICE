@@ -1,0 +1,23 @@
+Deep Research Skill
+Copyright (c) 2026 Andrey Zagreev
+Licensed under the MIT License (see LICENSE).
+
+------------------------------------------------------------------------
+Executable engine — attribution
+------------------------------------------------------------------------
+
+The engine under
+  plugins/deep-research-skill/skills/deep-research-skill/engine/
+is an original, from-scratch implementation with a claim-centric,
+post-collection design (see docs/REBUILD_PLAN.md).
+
+Several algorithms it (re)implements are standard / textbook:
+  - Reciprocal Rank Fusion (RRF)
+  - Maximal Marginal Relevance (MMR)
+  - nDCG@k, precision@k, Jaccard similarity
+  - SQLite WAL + FTS5 accumulation patterns
+
+These were studied for reference in the MIT-licensed "last30days" skill
+by mvanhorn. No source code was copied; the engine is written from
+scratch. The reference skill's MIT license permits reuse with
+attribution, which this notice provides.
