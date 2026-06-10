@@ -1,4 +1,4 @@
-"""Phase 1 — checkpoint state & resume. SIGNATURES + CONTRACT, no logic yet.
+"""Phase 1 — checkpoint state & resume.
 
 Enforces the AGENT.MD §8.0 resume invariants IN CODE (vs by instruction):
   - fingerprint guard: match -> resume from next_phase; mismatch -> fresh run dir
@@ -12,12 +12,24 @@ Contract: docs/PHASE1_MODEL_STATE.md. stdlib-only. Python >= 3.10.
 
 from __future__ import annotations
 
+import hashlib
+import json
+import os
+import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from .model import Budget, Depth, Snapshot, TaskFrame
+from .model import (
+    Budget,
+    Depth,
+    Snapshot,
+    TaskFrame,
+    snapshot_from_dict,
+    snapshot_to_dict,
+)
 
 # Staleness windows in hours, by depth (AGENT.MD §8.0).
 STALENESS_WINDOW_HOURS: Dict[Depth, int] = {
@@ -26,6 +38,9 @@ STALENESS_WINDOW_HOURS: Dict[Depth, int] = {
     Depth.DEEP: 24 * 14,
     Depth.EXHAUSTIVE: 24 * 14,
 }
+
+_CP_RE = re.compile(r"^cp_(\d+)_.*\.md$")
+_JSON_BLOCK_RE = re.compile(r"```json\s*\n(.*?)\n```", re.DOTALL)
 
 
 class ResumeMode(str, Enum):
@@ -46,73 +61,181 @@ class ResumeDecision:
 # --------------------------------------------------------------------------- #
 # Fingerprint
 # --------------------------------------------------------------------------- #
+def _norm(text: str) -> str:
+    """lower + trim + collapse internal whitespace."""
+    return " ".join(str(text).strip().lower().split())
+
+
 def normalize_for_fingerprint(task_frame: TaskFrame) -> str:
-    """Canonical string for fingerprinting: lower/trim/collapse-whitespace of
-    `question | route | depth | sorted(scope)`. Pure, deterministic, no clock.
+    """Canonical string for fingerprinting: `question | route | depth | sorted(scope)`,
+    each piece lower/trimmed/whitespace-collapsed. Pure, deterministic, no clock.
+    `acceptance_criteria` is intentionally EXCLUDED — it is mutable refinement and
+    must not change task identity.
     """
-    raise NotImplementedError("Phase 1: normalize_for_fingerprint")
+    scope = sorted(_norm(s) for s in task_frame.scope)
+    return "|".join(
+        [_norm(task_frame.question), _norm(task_frame.route.value), _norm(task_frame.depth.value), *scope]
+    )
 
 
 def compute_fingerprint(task_frame: TaskFrame) -> str:
     """sha1(normalize_for_fingerprint(task_frame)).hexdigest(). Pure."""
-    raise NotImplementedError("Phase 1: compute_fingerprint")
+    return hashlib.sha1(normalize_for_fingerprint(task_frame).encode("utf-8")).hexdigest()
 
 
 # --------------------------------------------------------------------------- #
 # Checkpoint I/O
 # --------------------------------------------------------------------------- #
-def find_latest_checkpoint(run_dir: Path) -> Optional[Path]:
-    """Highest-NN `cp_NN_*.md` whose state block parses; falls back to NN-1 if
-    the top one is corrupt. Returns None if none are valid.
-    """
-    raise NotImplementedError("Phase 1: find_latest_checkpoint")
-
-
 def load_checkpoint(path: Path) -> Snapshot:
     """Extract the leading ```json state block from a `cp_NN_*.md` and build a
-    Snapshot via model.snapshot_from_dict.
+    Snapshot via model.snapshot_from_dict. Raises if no block / invalid JSON /
+    unsupported version.
     """
-    raise NotImplementedError("Phase 1: load_checkpoint")
+    text = Path(path).read_text(encoding="utf-8")
+    match = _JSON_BLOCK_RE.search(text)
+    if not match:
+        raise ValueError(f"no json state block in {path}")
+    return snapshot_from_dict(json.loads(match.group(1)))
+
+
+def find_latest_checkpoint(run_dir: Path) -> Optional[Path]:
+    """Highest-NN `cp_NN_*.md` whose state block parses; falls back to the next
+    lower NN if the top one is corrupt. Returns None if none are valid.
+    """
+    run_dir = Path(run_dir)
+    if not run_dir.exists():
+        return None
+    candidates = []
+    for entry in run_dir.iterdir():
+        m = _CP_RE.match(entry.name)
+        if m:
+            candidates.append((int(m.group(1)), entry))
+    for _, path in sorted(candidates, key=lambda t: t[0], reverse=True):
+        try:
+            load_checkpoint(path)
+            return path
+        except Exception:
+            continue
+    return None
 
 
 def save_checkpoint(snapshot: Snapshot, run_dir: Path, stage: str) -> Path:
     """Atomically write `cp_NN_<stage>.md` with a leading ```json state block
-    (write tmp + os.replace). Returns the written path.
+    (write tmp + os.replace). NN = max existing + 1 (1-based). Returns the path.
     """
-    raise NotImplementedError("Phase 1: save_checkpoint")
+    run_dir = Path(run_dir)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    nums = [int(m.group(1)) for e in run_dir.iterdir() for m in [_CP_RE.match(e.name)] if m]
+    nn = (max(nums) + 1) if nums else 1
+    name = f"cp_{nn:02d}_{stage}.md"
+    path = run_dir / name
+    body = "```json\n" + json.dumps(snapshot_to_dict(snapshot), ensure_ascii=False, indent=2) + "\n```\n"
+    tmp = run_dir / (name + ".tmp")
+    tmp.write_text(body, encoding="utf-8")
+    os.replace(tmp, path)
+    return path
 
 
 # --------------------------------------------------------------------------- #
 # Resume invariants
 # --------------------------------------------------------------------------- #
 def carry_budget(previous: Budget, fresh: Budget) -> Budget:
-    """Carry spent_usd / loads_used forward from `previous`; keep limits from
-    `fresh`. Never resets spend. Pure.
+    """Carry spent_usd / loads_used forward from `previous`; keep the limits
+    (limit_usd / loads_cap) from `fresh`. Never resets spend. Pure.
     """
-    raise NotImplementedError("Phase 1: carry_budget")
+    return Budget(
+        limit_usd=fresh.limit_usd,
+        spent_usd=previous.spent_usd,
+        loads_used=previous.loads_used,
+        loads_cap=fresh.loads_cap,
+    )
+
+
+def _parse_iso(value: str) -> Optional[datetime]:
+    """Parse an ISO-8601 timestamp (accepts a trailing 'Z'); naive -> UTC.
+    Returns None if empty or unparseable.
+    """
+    if not value:
+        return None
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
 
 
 def stale_source_ids(snapshot: Snapshot, now_utc: str) -> List[str]:
     """Ids of `time_sensitive` sources whose `created_utc` is older than the
     depth window (STALENESS_WINDOW_HOURS). `now_utc` is passed in (ISO) — the
-    engine reads no system clock. Pure.
+    engine reads no system clock. A time_sensitive source with a missing or
+    unparseable `created_utc` is treated as stale (safer to re-verify). Pure.
     """
-    raise NotImplementedError("Phase 1: stale_source_ids")
+    now = _parse_iso(now_utc)
+    window_h = STALENESS_WINDOW_HOURS.get(snapshot.task_frame.depth)
+    if now is None or window_h is None:
+        return []
+    stale: List[str] = []
+    for src in snapshot.sources:
+        if not src.time_sensitive:
+            continue
+        created = _parse_iso(src.created_utc)
+        if created is None:
+            stale.append(src.id)
+            continue
+        age_hours = (now - created).total_seconds() / 3600.0
+        if age_hours > window_h:
+            stale.append(src.id)
+    return stale
 
 
 def resume_or_fresh(task_frame: TaskFrame, run_root: Path, now_utc: str) -> ResumeDecision:
     """Top-level decision the CLI `resume` command calls:
       1. compute fingerprint of task_frame
-      2. scan run_root for a checkpoint whose snapshot.task_fingerprint matches
+      2. look in run_root/run-<fingerprint>/ for the latest valid checkpoint
       3. match -> RESUME (or RESUME_RESTALE if stale_source_ids is non-empty)
       4. no match -> FRESH with a NEW run_dir (never clobbers an existing one)
+
+    The run dir is keyed by the full fingerprint, so a different task always maps
+    to a different dir and an existing checkpoint is never clobbered.
     """
-    raise NotImplementedError("Phase 1: resume_or_fresh")
+    fingerprint = compute_fingerprint(task_frame)
+    run_dir = Path(run_root) / f"run-{fingerprint}"
+    checkpoint = find_latest_checkpoint(run_dir)
+    if checkpoint is not None:
+        snapshot = load_checkpoint(checkpoint)
+        if snapshot.task_fingerprint == fingerprint:
+            stale = stale_source_ids(snapshot, now_utc)
+            if stale:
+                return ResumeDecision(
+                    ResumeMode.RESUME_RESTALE, run_dir, snapshot, stale,
+                    f"resume {snapshot.run_id} from phase {snapshot.next_phase}; "
+                    f"{len(stale)} stale time-sensitive source(s) to re-verify",
+                )
+            return ResumeDecision(
+                ResumeMode.RESUME, run_dir, snapshot, [],
+                f"resume {snapshot.run_id} from phase {snapshot.next_phase}",
+            )
+        # Stored fingerprint disagrees with the dir key (hash collision): do not
+        # clobber it — start fresh in a sibling dir.
+        run_dir = Path(run_root) / f"run-{fingerprint}-new"
+    return ResumeDecision(ResumeMode.FRESH, run_dir, None, [], "fresh run (no matching checkpoint)")
 
 
 def assert_sources_readonly(before: Snapshot, after: Snapshot) -> List[str]:
     """In-code enforcement of the §8.0 read-only rule: a resumed run must not
     mutate already-collected source payloads. Returns the ids whose
-    url / raw_path / extract changed (empty list = invariant held). Pure.
+    url / raw_path / extract changed (empty list = invariant held). New sources
+    in `after` (no matching id in `before`) are not mutations and are ignored. Pure.
     """
-    raise NotImplementedError("Phase 1: assert_sources_readonly")
+    before_map = {s.id: s for s in before.sources}
+    changed: List[str] = []
+    for src in after.sources:
+        prior = before_map.get(src.id)
+        if prior is None:
+            continue
+        if src.url != prior.url or src.raw_path != prior.raw_path or src.extract != prior.extract:
+            changed.append(src.id)
+    return changed

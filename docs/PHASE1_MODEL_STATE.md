@@ -1,9 +1,9 @@
 # Phase 1 — Data model + state: контракт (перед кодом)
 
 > Цель Phase 1: превратить «checkpoint — placeholder / resume по инструкции» в **реальный сериализуемый
-> объект** с инвариантами §8.0, проверяемыми В КОДЕ. Здесь зафиксирована ФОРМА (dataclasses/enums)
-> и поверхность функций; ЛОГИКА (serialize/validate/fingerprint/resume) — в реализации Phase 1.
-> Файлы: `engine/model.py` (сигнатуры готовы), `engine/state.py` (сигнатуры готовы).
+> объект** с инвариантами §8.0, проверяемыми В КОДЕ. ФОРМА (dataclasses/enums), сериализация, валидация и
+> resume-инварианты — **реализованы и покрыты юнит-тестами** (`tests/test_phase1.py`, 16 тестов).
+> Файлы: `engine/model.py`, `engine/state.py`. Disposition-политика (`engine/policy.py`) — сигнатура, Phase 6.
 
 Модель **claim-центричная** и **расширяет** JSON `state`-блок из `AGENT.MD §8.0` (обратносовместимо —
 только добавления). Сериализованный snapshot = тот же `state`-блок, что пишется в `cp_NN_<stage>.md`.

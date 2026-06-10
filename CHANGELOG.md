@@ -7,23 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Phase 1 (модель данных + state) — **дизайн до сигнатур и JSON-контрактов, перед кодом**. Логика
-(serialize/validate/fingerprint/resume) ещё не реализована.
+Phase 1 (модель данных + state) — **реализован и покрыт юнит-тестами** (16 тестов, stdlib `unittest`).
+Сериализация, валидация и resume-инварианты работают в коде. `engine/policy.py` (Phase 6) остаётся сигнатурой.
 
 ### Added
 - **`docs/PHASE1_MODEL_STATE.md`** — контракт Phase 1: claim-центричный JSON-snapshot, расширяющий
   AGENT.MD §8.0 (аддитивно: `clusters[]`, `scores{}`, `time_sensitive`, `contradicting_sources`,
   `role`, `language`, DAG-поля subtask'ов); 6 категорий фактчека ↔ enum; fingerprint-алгоритм;
   5 resume-инвариантов с функциями-энфорсерами; правила round-trip/валидации; atomic-запись checkpoint.
-- **`engine/model.py`** — dataclasses + 11 enums определены полностью (Snapshot/TaskFrame/Source/Claim/
-  EvidenceCluster/Budget/SubTask/ScoreComponents; `ClaimCategory` = 6 категорий из `factcheck_system.md §4.1`
-  с label+emoji). Сериализация (`snapshot_to_dict`/`snapshot_from_dict`/`validate_snapshot`) — сигнатуры.
-- **`engine/state.py`** — поверхность state-машины как сигнатуры: `compute_fingerprint`, `resume_or_fresh`
-  (→ `ResumeDecision{FRESH|RESUME|RESUME_RESTALE}`), `find_latest_checkpoint`, `save/load_checkpoint`,
-  `carry_budget`, `stale_source_ids`, `assert_sources_readonly`. `STALENESS_WINDOW_HOURS` по depth задан.
+- **`engine/model.py`** — dataclasses + 11 enums (Snapshot/TaskFrame/Source/Claim/EvidenceCluster/Budget/
+  SubTask/ScoreComponents; `ClaimCategory` = 6 категорий из `factcheck_system.md §4.1` с label+emoji).
+  **Реализованы** `snapshot_to_dict`/`snapshot_from_dict` (round-trip; None-поля дропаются и восстанавливаются
+  дефолтами; version-guard) и `validate_snapshot` (id-уникальность, ссылки claim→source, confidence 1..5,
+  representative_ids ⊆ claim_ids, cluster_id существует, next_phase 0..6, budget ≥ 0).
+- **`engine/state.py`** — state-машина **реализована**: `compute_fingerprint` (sha1, исключает
+  `acceptance_criteria`), `resume_or_fresh` (→ `ResumeDecision{FRESH|RESUME|RESUME_RESTALE}`, run-папка по
+  fingerprint), `find_latest_checkpoint` (highest-NN + NN-1 fallback), `save/load_checkpoint` (atomic
+  `os.replace`, ведущий ```json-блок), `carry_budget`, `stale_source_ids`, `assert_sources_readonly`.
 - **`engine/policy.py`** (Phase 6) — роль-зависимая reportability: `disposition(claim, report_mode) ->
   Disposition` (сигнатура + таблица-контракт); enums `ReportMode{findings,debunk,mixed}` и
   `Disposition{include,include_with_flag,include_as_correction,exclude_but_record,trigger_revision}`.
+- **`tests/test_phase1.py`** — 16 юнит-тестов (round-trip dict+JSON, инварианты, fingerprint match/mismatch
+  + исключение `acceptance_criteria`, staleness-окна, `carry_budget`, read-only источников, checkpoint
+  save/load + NN-1 fallback, resume fresh→resume→restale). Запуск: `python -m unittest discover -s tests -t .`
 
 ### Changed (по итогам code-review + дизайн-критики FALSE-исключения)
 - **`ClaimCategory` значения → lowercase** (`"verified"` …), совпадают с примером AGENT.MD §8.0 — старые
@@ -34,9 +40,10 @@ Phase 1 (модель данных + state) — **дизайн до сигнат
   `TRIGGER_REVISION`. Политика вынесена в Phase 6 (render), не в модель данных.
 
 ### Verified
-- `engine.model`/`engine.state`/`engine.policy` импортируются чисто; Snapshot=16 полей, Claim=10 (с `role`),
-  model.py=11 enums; `ClaimCategory` значения lowercase; `REPORTABLE_CATEGORIES` отсутствует; `disposition()`
-  и сериализация — `NotImplementedError`; окна staleness (Standard=168ч) совпадают; `python -m engine` работает.
+- **16/16 юнит-тестов проходят** (`python -m unittest discover -s tests -t .`): round-trip dict+JSON,
+  validate-инварианты, fingerprint match/mismatch, staleness, carry_budget, read-only, checkpoint
+  save/load + NN-1 fallback, resume fresh→resume→restale. `python -m engine` работает; `disposition()`
+  (Phase 6) остаётся `NotImplementedError`; категории сериализуются lowercase; staleness Standard=168ч.
 
 ## [0.5.0] - 2026-06-09
 

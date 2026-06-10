@@ -11,7 +11,7 @@ stdlib-only. Python >= 3.10.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields, is_dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -242,21 +242,157 @@ class Snapshot:
 # --------------------------------------------------------------------------- #
 # Serialization / validation — SIGNATURES ONLY (Phase 1 implementation)
 # --------------------------------------------------------------------------- #
+def _jsonable(value: Any) -> Any:
+    """Recursively convert dataclasses/enums to JSON-native types.
+
+    Dataclass FIELDS that are None are dropped (the §8.0 shape omits them);
+    enums become their .value; lists/dicts recurse. Arbitrary dict contents
+    (extract/metadata/engagement) are passed through opaquely, including None.
+    """
+    if is_dataclass(value) and not isinstance(value, type):
+        out: Dict[str, Any] = {}
+        for f in fields(value):
+            v = getattr(value, f.name)
+            if v is None:
+                continue
+            out[f.name] = _jsonable(v)
+        return out
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, list):
+        return [_jsonable(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _jsonable(v) for k, v in value.items()}
+    return value
+
+
 def snapshot_to_dict(snapshot: Snapshot) -> Dict[str, Any]:
     """Serialize a Snapshot to its JSON-ready dict (AGENT.MD §8.0 shape).
 
     Enums -> their .value; nested dataclasses -> dicts; None scalar fields are
     dropped per the contract in docs/PHASE1_MODEL_STATE.md.
     """
-    raise NotImplementedError("Phase 1: snapshot_to_dict")
+    return _jsonable(snapshot)
+
+
+def _budget_from(d: Dict[str, Any]) -> Budget:
+    return Budget(
+        limit_usd=float(d.get("limit_usd", 0.0)),
+        spent_usd=float(d.get("spent_usd", 0.0)),
+        loads_used=int(d.get("loads_used", 0)),
+        loads_cap=int(d.get("loads_cap", 0)),
+    )
+
+
+def _task_frame_from(d: Dict[str, Any]) -> TaskFrame:
+    return TaskFrame(
+        question=d["question"],
+        route=Route(d["route"]),
+        depth=Depth(d["depth"]),
+        scope=list(d.get("scope", [])),
+        acceptance_criteria=list(d.get("acceptance_criteria", [])),
+        language=d.get("language", "ru"),
+    )
+
+
+def _gate_from(d: Dict[str, Any]) -> GateResult:
+    return GateResult(id=d["id"], verdict=GateVerdict(d["verdict"]))
+
+
+def _subtask_from(d: Dict[str, Any]) -> SubTask:
+    return SubTask(
+        id=d["id"],
+        type=SubTaskType(d["type"]),
+        status=SubTaskStatus(d.get("status", "pending")),
+        depends_on=list(d.get("depends_on", [])),
+        description=d.get("description", ""),
+    )
+
+
+def _scores_from(d: Dict[str, Any]) -> ScoreComponents:
+    return ScoreComponents(
+        authority=d.get("authority"),
+        recency=d.get("recency"),
+        independence=d.get("independence"),
+        traceability=d.get("traceability"),
+        corroboration=d.get("corroboration"),
+        composite=d.get("composite"),
+    )
+
+
+def _source_from(d: Dict[str, Any]) -> Source:
+    return Source(
+        id=d["id"],
+        url=d["url"],
+        title=d.get("title", ""),
+        tier=Tier(d["tier"]) if d.get("tier") is not None else None,
+        fetched_via=d.get("fetched_via", ""),
+        status=SourceStatus(d.get("status", "pending")),
+        created_utc=d.get("created_utc", ""),
+        raw_path=d.get("raw_path"),
+        extract=dict(d.get("extract", {})),
+        published_at=d.get("published_at"),
+        date_confidence=DateConfidence(d.get("date_confidence", "low")),
+        time_sensitive=bool(d.get("time_sensitive", False)),
+        scores=_scores_from(d.get("scores", {})),
+        metadata=dict(d.get("metadata", {})),
+    )
+
+
+def _claim_from(d: Dict[str, Any]) -> Claim:
+    return Claim(
+        id=d["id"],
+        text=d["text"],
+        role=ClaimRole(d.get("role", "own_finding")),
+        category=ClaimCategory(d.get("category", "unverified")),
+        confidence=int(d.get("confidence", 1)),
+        sources=list(d.get("sources", [])),
+        contradicting_sources=list(d.get("contradicting_sources", [])),
+        status=ClaimStatus(d.get("status", "pending")),
+        cluster_id=d.get("cluster_id"),
+        verdict_explanation=d.get("verdict_explanation"),
+    )
+
+
+def _cluster_from(d: Dict[str, Any]) -> EvidenceCluster:
+    return EvidenceCluster(
+        id=d["id"],
+        title=d.get("title", ""),
+        claim_ids=list(d.get("claim_ids", [])),
+        representative_ids=list(d.get("representative_ids", [])),
+        uncertainty=d.get("uncertainty"),
+    )
 
 
 def snapshot_from_dict(payload: Dict[str, Any]) -> Snapshot:
-    """Inverse of snapshot_to_dict, with version check + validation.
+    """Inverse of snapshot_to_dict, with version check.
 
-    Unknown `checkpoint_version` must raise (never silently load).
+    Unknown `checkpoint_version` raises (never silently load). Missing optional
+    keys fall back to dataclass defaults, so a value dropped by snapshot_to_dict
+    round-trips back to its default (None / "" / []).
     """
-    raise NotImplementedError("Phase 1: snapshot_from_dict")
+    version = payload.get("checkpoint_version", CHECKPOINT_VERSION)
+    if version != CHECKPOINT_VERSION:
+        raise ValueError(f"Unsupported checkpoint_version: {version!r}")
+    gate = payload.get("last_gate")
+    return Snapshot(
+        run_id=payload["run_id"],
+        task_fingerprint=payload["task_fingerprint"],
+        task_frame=_task_frame_from(payload["task_frame"]),
+        created_utc=payload.get("created_utc", ""),
+        checkpoint_version=version,
+        stage=payload.get("stage", ""),
+        phase_completed=int(payload.get("phase_completed", 0)),
+        next_phase=int(payload.get("next_phase", 0)),
+        last_gate=_gate_from(gate) if gate else None,
+        budget=_budget_from(payload.get("budget", {})),
+        subtasks=[_subtask_from(x) for x in payload.get("subtasks", [])],
+        sources=[_source_from(x) for x in payload.get("sources", [])],
+        claims=[_claim_from(x) for x in payload.get("claims", [])],
+        clusters=[_cluster_from(x) for x in payload.get("clusters", [])],
+        open_items=list(payload.get("open_items", [])),
+        resume_instruction=payload.get("resume_instruction", ""),
+    )
 
 
 def validate_snapshot(snapshot: Snapshot) -> List[str]:
@@ -267,4 +403,61 @@ def validate_snapshot(snapshot: Snapshot) -> List[str]:
     of claim_ids; cluster_id references an existing cluster; next_phase in 0..6;
     budget fields non-negative.
     """
-    raise NotImplementedError("Phase 1: validate_snapshot")
+    errors: List[str] = []
+
+    def _dups(ids: List[str]) -> List[str]:
+        seen: set = set()
+        dup: set = set()
+        for i in ids:
+            if i in seen:
+                dup.add(i)
+            seen.add(i)
+        return sorted(dup)
+
+    source_ids = [s.id for s in snapshot.sources]
+    claim_ids = [c.id for c in snapshot.claims]
+    subtask_ids = [t.id for t in snapshot.subtasks]
+    cluster_ids = [k.id for k in snapshot.clusters]
+
+    for kind, ids in (
+        ("source", source_ids),
+        ("claim", claim_ids),
+        ("subtask", subtask_ids),
+        ("cluster", cluster_ids),
+    ):
+        for d in _dups(ids):
+            errors.append(f"duplicate {kind} id: {d}")
+
+    source_set = set(source_ids)
+    claim_set = set(claim_ids)
+    cluster_set = set(cluster_ids)
+
+    for c in snapshot.claims:
+        if not (1 <= c.confidence <= 5):
+            errors.append(f"claim {c.id}: confidence {c.confidence} out of 1..5")
+        for sid in c.sources:
+            if sid not in source_set:
+                errors.append(f"claim {c.id}: unknown source {sid}")
+        for sid in c.contradicting_sources:
+            if sid not in source_set:
+                errors.append(f"claim {c.id}: unknown contradicting source {sid}")
+        if c.cluster_id is not None and c.cluster_id not in cluster_set:
+            errors.append(f"claim {c.id}: unknown cluster_id {c.cluster_id}")
+
+    for k in snapshot.clusters:
+        member_set = set(k.claim_ids)
+        for cid in k.claim_ids:
+            if cid not in claim_set:
+                errors.append(f"cluster {k.id}: unknown claim {cid}")
+        for rid in k.representative_ids:
+            if rid not in member_set:
+                errors.append(f"cluster {k.id}: representative {rid} not in claim_ids")
+
+    if not (0 <= snapshot.next_phase <= 6):
+        errors.append(f"next_phase {snapshot.next_phase} out of 0..6")
+
+    for name in ("limit_usd", "spent_usd", "loads_used", "loads_cap"):
+        if getattr(snapshot.budget, name) < 0:
+            errors.append(f"budget.{name} negative")
+
+    return errors
