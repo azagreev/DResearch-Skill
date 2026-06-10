@@ -7,8 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Phase 1 (модель данных + state) — **реализован и покрыт юнит-тестами** (16 тестов, stdlib `unittest`).
-Сериализация, валидация и resume-инварианты работают в коде. `engine/policy.py` (Phase 6) остаётся сигнатурой.
+Phases 1–2 пересборки — **реализованы и покрыты юнит-тестами** (28 тестов, stdlib `unittest`).
+Phase 1: модель + state (сериализация, валидация, resume-инварианты). Phase 2: детерминированные
+dedupe / rank (RRF + authority) / freshness. `engine/policy.py` (Phase 6) остаётся сигнатурой.
 
 ### Added
 - **`docs/PHASE1_MODEL_STATE.md`** — контракт Phase 1: claim-центричный JSON-snapshot, расширяющий
@@ -30,6 +31,16 @@ Phase 1 (модель данных + state) — **реализован и пок
 - **`tests/test_phase1.py`** — 16 юнит-тестов (round-trip dict+JSON, инварианты, fingerprint match/mismatch
   + исключение `acceptance_criteria`, staleness-окна, `carry_budget`, read-only источников, checkpoint
   save/load + NN-1 fallback, resume fresh→resume→restale). Запуск: `python -m unittest discover -s tests -t .`
+- **`engine/dedupe.py`** (Phase 2) — детерминированный дедуп: `normalize_url` (https, www./m./amp., trailing
+  slash, utm/тех-параметры, fragment), `text_similarity` (char-trigram + token Jaccard), `dedupe_sources`
+  (exact-URL → near-dup ≥ threshold, order-stable, возвращает kept + merge-map).
+- **`engine/rank.py`** (Phase 2) — `reciprocal_rank_fusion` (RRF, веса по стримам, tie-break по id) +
+  `authority_weight` (Tier S/A/B/C/D → множитель) + `rank_sources` (`final = rrf · authority`).
+- **`engine/freshness.py`** (Phase 2) — `parse_iso` (единый ISO-парсер движка) + `recency_score`
+  (экспоненциальный спад, half-life; now/future → 1.0; missing → нейтраль). Сигнал свежести для ранжира,
+  отдельно от resume-staleness.
+- **`tests/test_phase2.py`** — 12 юнит-тестов (normalize_url, exact+near-dup, RRF-порядок/веса/tie,
+  authority-tilt, recency half-life/now/future/missing, parse_iso).
 
 ### Changed (по итогам code-review + дизайн-критики FALSE-исключения)
 - **`ClaimCategory` значения → lowercase** (`"verified"` …), совпадают с примером AGENT.MD §8.0 — старые
@@ -38,12 +49,15 @@ Phase 1 (модель данных + state) — **реализован и пок
   Добавлены роль claim'а `ClaimRole{own_finding,external_claim}` и роль-зависимая политика в `policy.py`:
   FALSE *внешнего* утверждения → `INCLUDE_AS_CORRECTION` (дебанк = ценность), FALSE *своего вывода* →
   `TRIGGER_REVISION`. Политика вынесена в Phase 6 (render), не в модель данных.
+- **ISO-парсер централизован.** `state.py` больше не держит свой `_parse_iso` — импортирует
+  `freshness.parse_iso` (единый источник разбора дат для staleness и recency).
 
 ### Verified
-- **16/16 юнит-тестов проходят** (`python -m unittest discover -s tests -t .`): round-trip dict+JSON,
-  validate-инварианты, fingerprint match/mismatch, staleness, carry_budget, read-only, checkpoint
-  save/load + NN-1 fallback, resume fresh→resume→restale. `python -m engine` работает; `disposition()`
-  (Phase 6) остаётся `NotImplementedError`; категории сериализуются lowercase; staleness Standard=168ч.
+- **28/28 юнит-тестов проходят** (`python -m unittest discover -s tests -t .`): Phase 1 (round-trip
+  dict+JSON, validate-инварианты, fingerprint match/mismatch, staleness, carry_budget, read-only,
+  checkpoint save/load + NN-1 fallback, resume fresh→resume→restale) + Phase 2 (normalize_url, exact+near-dup
+  dedupe, RRF-порядок/веса/tie, authority-tilt, recency, parse_iso). `python -m engine` работает;
+  `disposition()` (Phase 6) — `NotImplementedError`; категории сериализуются lowercase; staleness Standard=168ч.
 
 ## [0.5.0] - 2026-06-09
 

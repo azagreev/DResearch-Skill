@@ -17,11 +17,11 @@ import json
 import os
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from .freshness import parse_iso
 from .model import (
     Budget,
     Depth,
@@ -151,29 +151,13 @@ def carry_budget(previous: Budget, fresh: Budget) -> Budget:
     )
 
 
-def _parse_iso(value: str) -> Optional[datetime]:
-    """Parse an ISO-8601 timestamp (accepts a trailing 'Z'); naive -> UTC.
-    Returns None if empty or unparseable.
-    """
-    if not value:
-        return None
-    text = value.strip()
-    if text.endswith("Z"):
-        text = text[:-1] + "+00:00"
-    try:
-        dt = datetime.fromisoformat(text)
-    except ValueError:
-        return None
-    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
-
-
 def stale_source_ids(snapshot: Snapshot, now_utc: str) -> List[str]:
     """Ids of `time_sensitive` sources whose `created_utc` is older than the
     depth window (STALENESS_WINDOW_HOURS). `now_utc` is passed in (ISO) — the
     engine reads no system clock. A time_sensitive source with a missing or
     unparseable `created_utc` is treated as stale (safer to re-verify). Pure.
     """
-    now = _parse_iso(now_utc)
+    now = parse_iso(now_utc)
     window_h = STALENESS_WINDOW_HOURS.get(snapshot.task_frame.depth)
     if now is None or window_h is None:
         return []
@@ -181,7 +165,7 @@ def stale_source_ids(snapshot: Snapshot, now_utc: str) -> List[str]:
     for src in snapshot.sources:
         if not src.time_sensitive:
             continue
-        created = _parse_iso(src.created_utc)
+        created = parse_iso(src.created_utc)
         if created is None:
             stale.append(src.id)
             continue
