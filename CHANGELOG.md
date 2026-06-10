@@ -7,9 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Phases 1–2 пересборки — **реализованы и покрыты юнит-тестами** (28 тестов, stdlib `unittest`).
-Phase 1: модель + state (сериализация, валидация, resume-инварианты). Phase 2: детерминированные
-dedupe / rank (RRF + authority) / freshness. `engine/policy.py` (Phase 6) остаётся сигнатурой.
+Phases 1–3 пересборки — **реализованы и покрыты юнит-тестами** (37 тестов, stdlib `unittest`).
+Phase 1: модель + state. Phase 2: dedupe / rank / freshness. Phase 3: authority-скоринг
+(composite → tier S/A/B/C/D + confidence 1–5). `engine/policy.py` (Phase 6) остаётся сигнатурой.
 
 ### Added
 - **`docs/PHASE1_MODEL_STATE.md`** — контракт Phase 1: claim-центричный JSON-snapshot, расширяющий
@@ -41,6 +41,13 @@ dedupe / rank (RRF + authority) / freshness. `engine/policy.py` (Phase 6) ост
   отдельно от resume-staleness.
 - **`tests/test_phase2.py`** — 12 юнит-тестов (normalize_url, exact+near-dup, RRF-порядок/веса/tie,
   authority-tilt, recency half-life/now/future/missing, parse_iso).
+- **`engine/score.py`** (Phase 3) — authority-скоринг реальной арифметикой: `composite_score`
+  (`Authority·0.30 + Recency·0.25 + Independence·0.20 + Traceability·0.15 + Corroboration·0.10`),
+  `tier_for_score` (§3.5: S≥0.90, A≥0.75, B≥0.55, C≥0.35, D<0.35), `authority_component` (tier→под-скор),
+  `score_source` (заполняет recency из `freshness`, composite, переназначает tier), `claim_confidence`
+  (1–5 из тиров источников claim'а: ≥2 S→5, S/≥2 A→4, A/≥2 B→3, B/C→2, иначе→1), `score_claim(s)`.
+- **`tests/test_phase3.py`** — 9 юнит-тестов (3 worked-примера composite, пороги tier на границах,
+  authority_component, score_source recency→composite→tier, лестница confidence 1–5).
 
 ### Changed (по итогам code-review + дизайн-критики FALSE-исключения)
 - **`ClaimCategory` значения → lowercase** (`"verified"` …), совпадают с примером AGENT.MD §8.0 — старые
@@ -53,11 +60,17 @@ dedupe / rank (RRF + authority) / freshness. `engine/policy.py` (Phase 6) ост
   `freshness.parse_iso` (единый источник разбора дат для staleness и recency).
 
 ### Verified
-- **28/28 юнит-тестов проходят** (`python -m unittest discover -s tests -t .`): Phase 1 (round-trip
+- **37/37 юнит-тестов проходят** (`python -m unittest discover -s tests -t .`): Phase 1 (round-trip
   dict+JSON, validate-инварианты, fingerprint match/mismatch, staleness, carry_budget, read-only,
   checkpoint save/load + NN-1 fallback, resume fresh→resume→restale) + Phase 2 (normalize_url, exact+near-dup
-  dedupe, RRF-порядок/веса/tie, authority-tilt, recency, parse_iso). `python -m engine` работает;
-  `disposition()` (Phase 6) — `NotImplementedError`; категории сериализуются lowercase; staleness Standard=168ч.
+  dedupe, RRF-порядок/веса/tie, authority-tilt, recency, parse_iso) + Phase 3 (composite worked-примеры,
+  пороги tier, confidence-лестница 1–5). `python -m engine` работает; `disposition()` (Phase 6) —
+  `NotImplementedError`; категории сериализуются lowercase; staleness Standard=168ч.
+
+### Known doc inconsistency (не код)
+- `references/source_authority_framework.md`: worked-примеры (§3.4) подписывают `0.79 → Tier B` и
+  `0.565 → Tier C`, что противоречит таблице §3.5 (`0.75–0.89 → A`, `0.55–0.74 → B`). `score.py` следует
+  **таблице §3.5** (канон). Подписи примеров стоит поправить в доке.
 
 ## [0.5.0] - 2026-06-09
 
