@@ -38,7 +38,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from .model import Claim
+from .model import Claim, ClaimCategory, ClaimRole
 
 
 class ReportMode(str, Enum):
@@ -60,6 +60,23 @@ def disposition(claim: Claim, report_mode: ReportMode) -> Disposition:
 
     Pure, deterministic; implements the table in this module's docstring.
     `report_mode` is decided upstream (Phase 0 intent), not stored on the claim.
-    Phase 6 implementation.
     """
-    raise NotImplementedError("Phase 6: disposition")
+    category = claim.category
+
+    if category is ClaimCategory.VERIFIED:
+        return Disposition.INCLUDE
+
+    if category in (ClaimCategory.OUTDATED, ClaimCategory.INCOMPLETE, ClaimCategory.OPINION):
+        return Disposition.INCLUDE_WITH_FLAG
+
+    if category is ClaimCategory.UNVERIFIED:
+        # FINDINGS asserts what's true; an unverifiable claim is not a finding —
+        # keep it out of the report but record it (memory). Otherwise flag it.
+        if report_mode is ReportMode.FINDINGS:
+            return Disposition.EXCLUDE_BUT_RECORD
+        return Disposition.INCLUDE_WITH_FLAG
+
+    # FALSE — branches on role.
+    if claim.role is ClaimRole.EXTERNAL_CLAIM:
+        return Disposition.INCLUDE_AS_CORRECTION  # the debunk IS the value
+    return Disposition.TRIGGER_REVISION           # never publish our own falsehood

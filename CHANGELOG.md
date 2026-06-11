@@ -7,10 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Phases 1–4 пересборки — **реализованы и покрыты юнит-тестами** (45 тестов, stdlib `unittest`).
-Phase 1: модель + state. Phase 2: dedupe / rank / freshness. Phase 3: authority-скоринг
-(composite → tier + confidence). Phase 4: фактчек-ядро (вердикт из доказательств) + кластеризация.
-`engine/policy.py` (Phase 6) остаётся сигнатурой.
+Phases 1–6 пересборки — **реализованы и покрыты юнит-тестами** (56 тестов, stdlib `unittest`).
+Движок собран целиком: модель+state, dedupe/rank/freshness, authority-скоринг, фактчек+кластеры,
+кросс-прогонная память+eval, вывод+disposition-политика+опц. платные провайдеры. Версия пока 0.5.0
+(всё Unreleased — на крупный релиз). CLI-команды (`ingest/rank/score/...`) пока заглушки: библиотека
+готова, осталась обвязка I/O.
 
 ### Added
 - **`docs/PHASE1_MODEL_STATE.md`** — контракт Phase 1: claim-центричный JSON-snapshot, расширяющий
@@ -60,6 +61,22 @@ Phase 1: модель + state. Phase 2: dedupe / rank / freshness. Phase 3: auth
 - **`tests/test_phase4.py`** — 8 юнит-тестов (resolve_conflict: tier/freshness/count/disputed; classify:
   UNVERIFIED/VERIFIED/FALSE/OPINION/OUTDATED + уважение model_category; status+confidence cap; кластеризация:
   группы/репрезентанты/uncertainty).
+- **`engine/memory.py`** (Phase 5) — кросс-прогонная память на SQLite (WAL + FTS5, LIKE-fallback):
+  `record_run` (дедуп источников по normalized URL, claims по normalized-text key, sighting-счётчики),
+  `seen_source`/`seen_claim`, `search_claims` (full-text), `get_stats`. «Видели ли это раньше» + ретро.
+- **`engine/eval.py`** (Phase 5) — метрики качества между прогонами: `precision_at_k`, `recall_at_k`,
+  `dcg_at_k`/`ndcg_at_k`, `jaccard`, `overlap_retention`, `source_coverage`.
+- **`engine/policy.py`** (Phase 6) — **реализована** `disposition()` (была сигнатура): VERIFIED→INCLUDE;
+  OUTDATED/INCOMPLETE/OPINION→INCLUDE_WITH_FLAG; UNVERIFIED→EXCLUDE_BUT_RECORD (findings) / FLAG (debunk);
+  FALSE×external→INCLUDE_AS_CORRECTION; FALSE×own→TRIGGER_REVISION.
+- **`engine/report.py`** (Phase 6) — cluster-first Markdown-рендер с применением disposition: выводы по
+  кластерам, флаги категорий, секция «Опровергнуто/коррекции», источники, footer-счётчики
+  (исключено-в-память / на пересмотр), агрегированная уверенность + emoji.
+- **`engine/providers.py`** (Phase 6) — опц. платный Tier-4 (Brave/Exa/Serper), **default OFF**:
+  `parse_dotenv`, `load_config` (env > .env), `is_enabled` (флаг `DRESEARCH_PAID_SEARCH` + ключ),
+  `select_backend`, `web_search` (инъектируемый `http=` для тестов; disabled→`[]`).
+- **`tests/test_phase5.py`** (4) + **`tests/test_phase6.py`** (7) — память (дедуп/поиск/stats), eval-метрики,
+  disposition-таблица, рендер findings/debunk, providers (precedence/enablement/select/web_search).
 
 ### Changed (по итогам code-review + дизайн-критики FALSE-исключения)
 - **`ClaimCategory` значения → lowercase** (`"verified"` …), совпадают с примером AGENT.MD §8.0 — старые
@@ -72,11 +89,12 @@ Phase 1: модель + state. Phase 2: dedupe / rank / freshness. Phase 3: auth
   `freshness.parse_iso` (единый источник разбора дат для staleness и recency).
 
 ### Verified
-- **45/45 юнит-тестов проходят** (`python -m unittest discover -s tests -t .`): Phase 1 (round-trip,
+- **56/56 юнит-тестов проходят** (`python -m unittest discover -s tests -t .`): Phase 1 (round-trip,
   validate, fingerprint, staleness, carry_budget, read-only, checkpoint + NN-1 fallback, resume) + Phase 2
   (normalize_url, dedupe, RRF, authority-tilt, recency) + Phase 3 (composite, пороги tier, confidence) +
-  Phase 4 (resolve_conflict, classify-вердикты, status/confidence cap, кластеризация). `python -m engine`
-  работает; `disposition()` (Phase 6) — `NotImplementedError`; категории lowercase; staleness Standard=168ч.
+  Phase 4 (resolve_conflict, classify-вердикты, status/confidence cap, кластеризация) + Phase 5 (память:
+  дедуп/поиск/stats; eval-метрики) + Phase 6 (disposition-таблица, рендер, providers). `python -m engine`
+  работает; `disposition()` теперь реализована; категории lowercase; staleness Standard=168ч; FTS5 доступен.
 
 ### Known doc inconsistency (не код)
 - `references/source_authority_framework.md`: worked-примеры (§3.4) подписывают `0.79 → Tier B` и
