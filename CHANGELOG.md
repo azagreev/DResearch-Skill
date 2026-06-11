@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-06-11
+
+Добивка хвостов после v0.6.0: полная обвязка CLI, закрытие тест-пробелов из ревью, фикс доки.
+86 юнит-тестов (было 66).
+
+### Added
+- **Полная обвязка CLI** (`engine/cli.py`) — все подкоманды функциональны (JSON-in/JSON-out, UTF-8):
+  `ingest`, `rank`, `score`, `factcheck`, `cluster` (новая), `memory` (`--op record|search|stats`, `--db`),
+  `eval`, `checkpoint` (`--run-dir`/`--stage`), `resume` (`--run-root`/`--now`) — вдобавок к `run`/`report`/
+  `doctor`. Заглушек больше нет.
+- **`tests/test_cli.py`** (10) — прогон каждой подкоманды через `main()` с захватом stdout.
+- **`tests/test_gaps.py`** (10) — закрыты пробелы из 5-агентного ревью: resume различных задач без клоббера,
+  ошибки `load_checkpoint`/`find_latest`/`snapshot_from_dict`, остаток проверок `validate_snapshot`,
+  edge-кейсы `eval` (k=0, k>len, пустые множества), LIKE-fallback при FTS5=off, гейт OUTDATED по
+  `time_sensitive`, cap'ы confidence (OPINION→3, INCOMPLETE→4), no-override disposition FALSE/own, MMR-диверсити.
+
+### Fixed
+- **`references/source_authority_framework.md`** — исправлены подписи tier в worked-примерах §3.4
+  (`0.79 → Tier A`, `0.565 → Tier B`) под каноническую таблицу §3.5 (код `score.py` уже следовал таблице).
+
+### Verified
+- **86/86 юнит-тестов проходят** (`python -m unittest discover -s tests -t .`). Все 12 CLI-команд отвечают;
+  `python -m engine run` даёт end-to-end отчёт.
+
 ## [0.6.0] - 2026-06-11
 
 Исполняемый движок Phase 1–7 — **собран, протестирован и запускаем end-to-end** (66 юнит-тестов).
@@ -282,6 +306,7 @@ multi-agent resilience layer is not yet executed as real processes — see Known
   single Claude context; true fault tolerance requires the external control-loop (see `examples/`)
 - The checkpoint token is a placeholder; resumable state serialization is not yet implemented
 
+[0.6.1]: https://github.com/azagreev/DResearch-Skill/releases/tag/v0.6.1
 [0.6.0]: https://github.com/azagreev/DResearch-Skill/releases/tag/v0.6.0
 [0.5.0]: https://github.com/azagreev/DResearch-Skill/releases/tag/v0.5.0
 [0.4.0]: https://github.com/azagreev/DResearch-Skill/releases/tag/v0.4.0

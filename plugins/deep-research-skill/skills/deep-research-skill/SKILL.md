@@ -1,6 +1,6 @@
 ---
 name: deep-research-skill
-version: 0.6.0
+version: 0.6.1
 author: Andrey Zagreev (https://t.me/zagreev)
 last_updated: 2026-06-11
 description: |
@@ -71,13 +71,13 @@ echo "CACHE_SKILL_MD=$CACHE_SKILL_MD"
 
 3. **engine-режим.** Движок доступен → по мере готовности фаз делегируй детерминированные шаги CLI (`python -m engine <checkpoint|resume|ingest|rank|score|factcheck|memory|eval|report>`) вместо того, чтобы делать их «в уме».
 
-**Текущий статус (v0.6.0):** движок Phase 1–7 реализован (66 юнит-тестов). Функциональны `doctor`, `--version`, `run` (end-to-end: JSON с сырьём+claims → cluster-first отчёт), `report` (snapshot JSON → Markdown). Остальные пайплайн-подкоманды — заглушки: их библиотечная логика готова, нужна обвязка I/O. Без Python / code-execution — prose-only режим. Дорожная карта — `docs/REBUILD_PLAN.md`.
+**Текущий статус (v0.6.1):** движок Phase 1–7 реализован (86 юнит-тестов). **Все CLI-подкоманды функциональны** (JSON-in/JSON-out): `run` (end-to-end сырьё+claims → cluster-first отчёт), `report`, `ingest`, `rank`, `score`, `factcheck`, `cluster`, `memory`, `eval`, `checkpoint`, `resume`, `doctor`. Без Python / code-execution — prose-only режим. Дорожная карта — `docs/REBUILD_PLAN.md`.
 
 ---
 
 # Deep Research Skill
 
-> **Версия:** 0.6.0 | **Последнее обновление:** 2026-06-11
+> **Версия:** 0.6.1 | **Последнее обновление:** 2026-06-11
 > **Полная документация:** `SKILL.master.md` (lazy loading)
 > **Heartbeat/Checkpoint протокол:** `AGENT.MD`
 
@@ -607,4 +607,4 @@ CloakBrowser (prevent) → CapSolver (AI, 2-5s, $0.80/1K)
 
 ---
 
-*Deep Research Skill v0.6.0 — testing release. Полная документация: SKILL.master.md. Язык адаптируется к языку пользователя. All phase modules load on-demand — no eager loading.*
+*Deep Research Skill v0.6.1 — testing release. Полная документация: SKILL.master.md. Язык адаптируется к языку пользователя. All phase modules load on-demand — no eager loading.*
