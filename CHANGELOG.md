@@ -5,13 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-06-11
 
-Phases 1–6 пересборки — **реализованы и покрыты юнит-тестами** (56 тестов, stdlib `unittest`).
-Движок собран целиком: модель+state, dedupe/rank/freshness, authority-скоринг, фактчек+кластеры,
-кросс-прогонная память+eval, вывод+disposition-политика+опц. платные провайдеры. Версия пока 0.5.0
-(всё Unreleased — на крупный релиз). CLI-команды (`ingest/rank/score/...`) пока заглушки: библиотека
-готова, осталась обвязка I/O.
+Исполняемый движок Phase 1–7 — **собран, протестирован и запускаем end-to-end** (66 юнит-тестов).
+Phase 1: модель+state. Phase 2: dedupe/rank/freshness. Phase 3: authority-скоринг. Phase 4: фактчек+кластеры.
+Phase 5: кросс-прогонная память+eval. Phase 6: вывод+disposition-политика+опц. платные провайдеры.
+Phase 7: интеграция (`ingest` raw→Source, `pipeline.run_pipeline`, CLI `run`/`report`) + фиксы блокеров
+по итогам 5-агентного ревью. `python -m engine run` принимает JSON (сырьё+claims) и выдаёт cluster-first
+отчёт. Контракт-слой (SKILL.md/AGENT.MD) сохранён; переписан слой ИСПОЛНЕНИЯ.
 
 ### Added
 - **`docs/PHASE1_MODEL_STATE.md`** — контракт Phase 1: claim-центричный JSON-snapshot, расширяющий
@@ -77,6 +78,28 @@ Phases 1–6 пересборки — **реализованы и покрыты
   `select_backend`, `web_search` (инъектируемый `http=` для тестов; disabled→`[]`).
 - **`tests/test_phase5.py`** (4) + **`tests/test_phase6.py`** (7) — память (дедуп/поиск/stats), eval-метрики,
   disposition-таблица, рендер findings/debunk, providers (precedence/enablement/select/web_search).
+- **`engine/ingest.py`** (Phase 7) — `source_from_raw` / `ingest_sources`: сырые dict'ы поиска → типизированные
+  `Source` (id'ы, created_utc, date_confidence, начальный tier, score-компоненты) + дедуп.
+- **`engine/pipeline.py`** (Phase 7) — обвязка: `reconcile_merges` (переписывает дропнутые id источников в
+  claim'ах после дедупа), `build_snapshot` (сборка spine с fingerprint), `run_pipeline` (end-to-end:
+  ingest→reconcile→score→factcheck→cluster→Snapshot).
+- **CLI `run` и `report`** (`engine/cli.py`) — `python -m engine run` (JSON сырьё+claims → cluster-first
+  отчёт, опц. `--out snapshot.json`) и `report` (snapshot JSON → Markdown). UTF-8 вывод (не падает на
+  cp1251-консоли). Остальные подкоманды — заглушки.
+- **`tests/test_phase7.py`** (10) — ingest, reconcile, build_snapshot, end-to-end `run_pipeline` (+ валидный
+  snapshot), authority-засев, normalize_url (scheme-less/порты), FTS-спецсимволы, exa POST-тело, batch hints.
+
+### Fixed (блокеры по итогам 5-агентного ревью движка)
+- **Тихая деградация скоринга:** `score_source` теперь засевает `ScoreComponents.authority` из начального
+  tier (раньше composite был ~только recency → все источники падали в C/D).
+- **Сборка пайплайна:** добавлены `ingest` (raw→Source) и `build_snapshot` — движок собирается end-to-end
+  (раньше эти связки отсутствовали, `Snapshot` никто не наполнял).
+- **`normalize_url`:** чинит URL без схемы (`example.com/a` больше не ломается) и срезает порты `:80/:443`
+  → дедуп и memory-PK срабатывают.
+- **`search_claims`:** безопасный FTS5-запрос (токены в кавычках) + fallback на LIKE — больше не падает на
+  `&`, `+`, кавычках и т.п.
+- **`providers` exa/serper:** шлют POST с JSON-телом (раньше GET без тела → query терялся).
+- **`factcheck_claims`:** принимает `model_categories` (раньше batch-API терял семантический хинт модели).
 
 ### Changed (по итогам code-review + дизайн-критики FALSE-исключения)
 - **`ClaimCategory` значения → lowercase** (`"verified"` …), совпадают с примером AGENT.MD §8.0 — старые
@@ -89,12 +112,11 @@ Phases 1–6 пересборки — **реализованы и покрыты
   `freshness.parse_iso` (единый источник разбора дат для staleness и recency).
 
 ### Verified
-- **56/56 юнит-тестов проходят** (`python -m unittest discover -s tests -t .`): Phase 1 (round-trip,
-  validate, fingerprint, staleness, carry_budget, read-only, checkpoint + NN-1 fallback, resume) + Phase 2
-  (normalize_url, dedupe, RRF, authority-tilt, recency) + Phase 3 (composite, пороги tier, confidence) +
-  Phase 4 (resolve_conflict, classify-вердикты, status/confidence cap, кластеризация) + Phase 5 (память:
-  дедуп/поиск/stats; eval-метрики) + Phase 6 (disposition-таблица, рендер, providers). `python -m engine`
-  работает; `disposition()` теперь реализована; категории lowercase; staleness Standard=168ч; FTS5 доступен.
+- **66/66 юнит-тестов проходят** (`python -m unittest discover -s tests -t .`): Phase 1–6 (как раньше) +
+  Phase 7 (ingest, reconcile, build_snapshot, end-to-end run_pipeline → валидный snapshot, authority-засев,
+  normalize_url scheme-less/порты, FTS-спецсимволы, exa POST, batch hints). **CLI `run` smoke прошёл
+  end-to-end** (сырьё+claim JSON → cluster-first отчёт, источник tier S, claim VERIFIED conf 4).
+  `disposition()` реализована; категории lowercase; staleness Standard=168ч; FTS5 доступен.
 
 ### Known doc inconsistency (не код)
 - `references/source_authority_framework.md`: worked-примеры (§3.4) подписывают `0.79 → Tier B` и
@@ -260,6 +282,7 @@ multi-agent resilience layer is not yet executed as real processes — see Known
   single Claude context; true fault tolerance requires the external control-loop (see `examples/`)
 - The checkpoint token is a placeholder; resumable state serialization is not yet implemented
 
+[0.6.0]: https://github.com/azagreev/DResearch-Skill/releases/tag/v0.6.0
 [0.5.0]: https://github.com/azagreev/DResearch-Skill/releases/tag/v0.5.0
 [0.4.0]: https://github.com/azagreev/DResearch-Skill/releases/tag/v0.4.0
 [0.3.1]: https://github.com/azagreev/DResearch-Skill/releases/tag/v0.3.1

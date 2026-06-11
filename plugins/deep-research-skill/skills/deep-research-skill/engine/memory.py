@@ -148,16 +148,31 @@ def seen_claim(conn: sqlite3.Connection, text: str) -> bool:
     return conn.execute("SELECT 1 FROM claims WHERE claim_key=?", (claim_key(text),)).fetchone() is not None
 
 
+def _fts_query(query: str) -> str:
+    """Turn arbitrary user text into a safe FTS5 MATCH expression: each token is
+    wrapped as a quoted literal (internal quotes doubled), so FTS5 operators in
+    the text (&, +, -, :, *, AND/OR, unbalanced quotes) are matched literally
+    instead of crashing the parser.
+    """
+    tokens = [t for t in query.split() if t]
+    return " ".join('"' + t.replace('"', '""') + '"' for t in tokens)
+
+
 def search_claims(conn: sqlite3.Connection, query: str, limit: int = 10) -> List[Dict[str, Any]]:
     """Full-text search over recorded claims (FTS5 if available, else LIKE)."""
+    if not query.strip():
+        return []
     if FTS5_AVAILABLE:
-        rows = conn.execute(
-            "SELECT c.* FROM claims_fts f JOIN claims c ON c.claim_key=f.claim_key "
-            "WHERE claims_fts MATCH ? ORDER BY rank LIMIT ?",
-            (query, limit),
-        ).fetchall()
-    else:
-        rows = conn.execute("SELECT * FROM claims WHERE text LIKE ? LIMIT ?", (f"%{query}%", limit)).fetchall()
+        try:
+            rows = conn.execute(
+                "SELECT c.* FROM claims_fts f JOIN claims c ON c.claim_key=f.claim_key "
+                "WHERE claims_fts MATCH ? ORDER BY rank LIMIT ?",
+                (_fts_query(query), limit),
+            ).fetchall()
+            return [dict(row) for row in rows]
+        except sqlite3.OperationalError:
+            pass  # malformed FTS expression -> fall back to LIKE
+    rows = conn.execute("SELECT * FROM claims WHERE text LIKE ? LIMIT ?", (f"%{query}%", limit)).fetchall()
     return [dict(row) for row in rows]
 
 

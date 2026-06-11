@@ -1,0 +1,79 @@
+"""Phase 7 — ingest: raw search-result dicts -> typed Source records (+ dedupe).
+
+Bridges the model/collection layer (plain dicts from native web_search or
+providers.py) to the typed engine pipeline: assigns S-ids, stamps created_utc,
+derives date_confidence, carries an optional initial authority tier and score
+components, then dedupes. stdlib-only. Python >= 3.10.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional, Tuple
+
+from .dedupe import dedupe_sources
+from .model import DateConfidence, ScoreComponents, Source, SourceStatus, Tier
+
+
+def _coerce_tier(value: Any) -> Optional[Tier]:
+    if value is None or value == "":
+        return None
+    if isinstance(value, Tier):
+        return value
+    try:
+        return Tier(str(value).upper())
+    except ValueError:
+        return None
+
+
+def _components(raw: Dict[str, Any]) -> ScoreComponents:
+    comp = raw.get("scores") or {}
+    return ScoreComponents(
+        authority=comp.get("authority"),
+        recency=comp.get("recency"),
+        independence=comp.get("independence"),
+        traceability=comp.get("traceability"),
+        corroboration=comp.get("corroboration"),
+    )
+
+
+def source_from_raw(raw: Dict[str, Any], source_id: str, now_utc: str) -> Source:
+    """Map one raw result dict to a Source. Recognized keys: url|link, title,
+    snippet (-> extract), extract, tier, published_at|published|date,
+    time_sensitive, fetched_via, scores{...}, metadata{...}.
+    """
+    url = raw.get("url") or raw.get("link") or ""
+    published = raw.get("published_at") or raw.get("published") or raw.get("date")
+    extract = dict(raw.get("extract") or {})
+    if not extract and raw.get("snippet"):
+        extract = {"snippet": raw["snippet"]}
+    return Source(
+        id=source_id,
+        url=url,
+        title=raw.get("title", ""),
+        tier=_coerce_tier(raw.get("tier")),
+        fetched_via=raw.get("fetched_via", "native_web_search"),
+        status=SourceStatus.RENDERED if url else SourceStatus.PENDING,
+        created_utc=now_utc,
+        extract=extract,
+        published_at=published,
+        date_confidence=DateConfidence.HIGH if published else DateConfidence.LOW,
+        time_sensitive=bool(raw.get("time_sensitive", False)),
+        scores=_components(raw),
+        metadata=dict(raw.get("metadata") or {}),
+    )
+
+
+def ingest_sources(
+    raw_list: List[Dict[str, Any]],
+    now_utc: str,
+    start_index: int = 1,
+    dedupe: bool = True,
+    threshold: float = 0.85,
+) -> Tuple[List[Source], List[Tuple[str, str]]]:
+    """Convert raw results to Source records with ids S{start_index}.., then
+    dedupe. Returns (kept_sources, merges) where merges is [(kept_id, dropped_id)].
+    """
+    sources = [source_from_raw(raw, f"S{start_index + i}", now_utc) for i, raw in enumerate(raw_list)]
+    if not dedupe:
+        return sources, []
+    return dedupe_sources(sources, threshold)

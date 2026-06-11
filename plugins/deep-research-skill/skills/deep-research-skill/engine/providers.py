@@ -77,19 +77,27 @@ def select_backend(config: Dict[str, str], preference: str = "auto") -> Optional
     return preference if preference in available else None
 
 
-def _build_request(backend: str, query: str, config: Dict[str, str], count: int) -> Tuple[str, Dict[str, str]]:
+def _build_request(
+    backend: str, query: str, config: Dict[str, str], count: int
+) -> Tuple[str, Dict[str, str], Optional[Dict[str, Any]]]:
+    """Return (url, headers, body). body=None -> GET (Brave); a dict -> POST JSON
+    (Exa / Serper expect the query in a POST body, not the query string).
+    """
     if backend == "brave":
         url = "https://api.search.brave.com/res/v1/web/search?" + urlencode({"q": query, "count": count})
-        return url, {"X-Subscription-Token": config["BRAVE_API_KEY"], "Accept": "application/json"}
+        return url, {"X-Subscription-Token": config["BRAVE_API_KEY"], "Accept": "application/json"}, None
     if backend == "exa":
-        return "https://api.exa.ai/search", {"x-api-key": config["EXA_API_KEY"], "Content-Type": "application/json"}
+        headers = {"x-api-key": config["EXA_API_KEY"], "Content-Type": "application/json"}
+        return "https://api.exa.ai/search", headers, {"query": query, "numResults": count}
     if backend == "serper":
-        return "https://google.serper.dev/search", {"X-API-KEY": config["SERPER_API_KEY"], "Content-Type": "application/json"}
+        headers = {"X-API-KEY": config["SERPER_API_KEY"], "Content-Type": "application/json"}
+        return "https://google.serper.dev/search", headers, {"q": query, "num": count}
     raise ValueError(f"unknown backend: {backend}")
 
 
-def _default_http(url: str, headers: Dict[str, str]) -> Dict[str, Any]:
-    request = Request(url, headers=headers)
+def _default_http(url: str, headers: Dict[str, str], body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    data = json.dumps(body).encode("utf-8") if body is not None else None
+    request = Request(url, data=data, headers=headers, method="POST" if data else "GET")
     with urlopen(request, timeout=20) as response:  # noqa: S310 - explicit https endpoints
         return json.loads(response.read().decode("utf-8"))
 
@@ -99,13 +107,14 @@ def web_search(
     config: Dict[str, str],
     backend: str = "auto",
     count: int = 5,
-    http: Optional[Callable[[str, Dict[str, str]], Dict[str, Any]]] = None,
+    http: Optional[Callable[[str, Dict[str, str], Optional[Dict[str, Any]]], Dict[str, Any]]] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """Run a paid web search. Returns (items, meta).
 
     Returns ([], {"status": "disabled"}) unless paid search is enabled. `http` is
-    an injectable fetcher (url, headers) -> parsed-json for testing; defaults to
-    a urllib GET. Items are normalized to {id, url, title, snippet, backend}.
+    an injectable fetcher (url, headers, body) -> parsed-json for testing;
+    defaults to urllib (GET, or POST when a body is present). Items are
+    normalized to {id, url, title, snippet, backend}.
     """
     if not is_enabled(config):
         return [], {"status": "disabled"}
@@ -114,9 +123,9 @@ def web_search(
         return [], {"status": "no_backend"}
 
     fetch = http or _default_http
-    url, headers = _build_request(chosen, query, config, count)
+    url, headers, body = _build_request(chosen, query, config, count)
     try:
-        payload = fetch(url, headers)
+        payload = fetch(url, headers, body)
     except Exception as exc:  # network/parse failure -> graceful empty
         return [], {"status": "error", "backend": chosen, "error": str(exc)}
 

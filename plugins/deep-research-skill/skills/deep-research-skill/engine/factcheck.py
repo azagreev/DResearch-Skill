@@ -152,6 +152,12 @@ def factcheck_claims(
     claims: List[Claim],
     sources: List[Source],
     now_utc: Optional[str] = None,
+    model_categories: Optional[Dict[str, ClaimCategory]] = None,
 ) -> List[Claim]:
+    """Batch factcheck. `model_categories` maps claim.id -> the model's semantic
+    category hint (INCOMPLETE/OPINION/OUTDATED), honored only when the claim is
+    SUPPORTED (see classify_claim).
+    """
     by_id = {s.id: s for s in sources}
-    return [factcheck_claim(c, by_id, now_utc) for c in claims]
+    hints = model_categories or {}
+    return [factcheck_claim(c, by_id, now_utc, hints.get(c.id)) for c in claims]

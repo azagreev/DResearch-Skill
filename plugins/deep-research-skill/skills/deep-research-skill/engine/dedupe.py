@@ -27,8 +27,17 @@ def normalize_url(url: str) -> str:
     """
     if not url:
         return ""
-    parts = urlsplit(url.strip())
+    raw = url.strip()
+    # Scheme-less input ("example.com/a") would otherwise land the host in the
+    # path; give urlsplit a netloc to parse.
+    if "://" not in raw and not raw.startswith("//"):
+        raw = "//" + raw
+    parts = urlsplit(raw)
     host = parts.netloc.lower()
+    if host.endswith(":80"):
+        host = host[:-3]
+    elif host.endswith(":443"):
+        host = host[:-4]
     for prefix in _HOST_PREFIXES:
         if host.startswith(prefix):
             host = host[len(prefix):]

@@ -91,6 +91,11 @@ def score_source(
     wiring the Phase-2 recency signal into the Phase-3 composite.
     """
     components = source.scores
+    # Seed the Authority component from the source's initial tier classification
+    # (the §1.2-1.6 weight) when it hasn't been set, so the composite is not
+    # recency-only. The composite then re-derives the FINAL tier below.
+    if components.authority is None and source.tier is not None:
+        components.authority = authority_component(source.tier)
     if now_utc and components.recency is None and source.published_at:
         components.recency = recency_score(source.published_at, now_utc, half_life_days)
     components.composite = composite_score(components)

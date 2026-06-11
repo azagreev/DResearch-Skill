@@ -99,8 +99,9 @@ class TestProviders(unittest.TestCase):
     def test_web_search_disabled_and_injected_http(self):
         self.assertEqual(providers.web_search("q", {"BRAVE_API_KEY": "k"}), ([], {"status": "disabled"}))
 
-        def fake_http(url, headers):
+        def fake_http(url, headers, body=None):
             self.assertIn("brave.com", url)
+            self.assertIsNone(body)  # Brave is a GET, no body
             return {"web": {"results": [{"url": "https://x", "title": "T", "description": "D"}]}}
 
         cfg = {"DRESEARCH_PAID_SEARCH": "1", "BRAVE_API_KEY": "k"}
