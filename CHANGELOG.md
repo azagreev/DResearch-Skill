@@ -7,9 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Phases 1–3 пересборки — **реализованы и покрыты юнит-тестами** (37 тестов, stdlib `unittest`).
+Phases 1–4 пересборки — **реализованы и покрыты юнит-тестами** (45 тестов, stdlib `unittest`).
 Phase 1: модель + state. Phase 2: dedupe / rank / freshness. Phase 3: authority-скоринг
-(composite → tier S/A/B/C/D + confidence 1–5). `engine/policy.py` (Phase 6) остаётся сигнатурой.
+(composite → tier + confidence). Phase 4: фактчек-ядро (вердикт из доказательств) + кластеризация.
+`engine/policy.py` (Phase 6) остаётся сигнатурой.
 
 ### Added
 - **`docs/PHASE1_MODEL_STATE.md`** — контракт Phase 1: claim-центричный JSON-snapshot, расширяющий
@@ -48,6 +49,17 @@ Phase 1: модель + state. Phase 2: dedupe / rank / freshness. Phase 3: auth
   (1–5 из тиров источников claim'а: ≥2 S→5, S/≥2 A→4, A/≥2 B→3, B/C→2, иначе→1), `score_claim(s)`.
 - **`tests/test_phase3.py`** — 9 юнит-тестов (3 worked-примера composite, пороги tier на границах,
   authority_component, score_source recency→composite→tier, лестница confidence 1–5).
+- **`engine/factcheck.py`** (Phase 4) — детерминированный вердикт из структуры доказательств: `resolve_conflict`
+  (Tier > freshness > count → `SUPPORTED/CONTRADICTED/DISPUTED/NO_EVIDENCE`), `classify_claim`
+  (нет улик→UNVERIFIED; противоречие сильнее→FALSE; равновесие→OPINION; свежее опровержение по time-sensitive→
+  OUTDATED; иначе VERIFIED / семантическая категория модели), `factcheck_claim(s)` (категория + cap confidence
+  + status). Модель даёт claims+стансы, движок выносит воспроизводимый вердикт.
+- **`engine/cluster.py`** (Phase 4) — evidence-кластеры: жадная группировка по `text_similarity` + MMR-выбор
+  репрезентантов (relevance=confidence, diversity), флаг `uncertainty` (thin-evidence / single-source);
+  проставляет `claim.cluster_id`.
+- **`tests/test_phase4.py`** — 8 юнит-тестов (resolve_conflict: tier/freshness/count/disputed; classify:
+  UNVERIFIED/VERIFIED/FALSE/OPINION/OUTDATED + уважение model_category; status+confidence cap; кластеризация:
+  группы/репрезентанты/uncertainty).
 
 ### Changed (по итогам code-review + дизайн-критики FALSE-исключения)
 - **`ClaimCategory` значения → lowercase** (`"verified"` …), совпадают с примером AGENT.MD §8.0 — старые
@@ -60,12 +72,11 @@ Phase 1: модель + state. Phase 2: dedupe / rank / freshness. Phase 3: auth
   `freshness.parse_iso` (единый источник разбора дат для staleness и recency).
 
 ### Verified
-- **37/37 юнит-тестов проходят** (`python -m unittest discover -s tests -t .`): Phase 1 (round-trip
-  dict+JSON, validate-инварианты, fingerprint match/mismatch, staleness, carry_budget, read-only,
-  checkpoint save/load + NN-1 fallback, resume fresh→resume→restale) + Phase 2 (normalize_url, exact+near-dup
-  dedupe, RRF-порядок/веса/tie, authority-tilt, recency, parse_iso) + Phase 3 (composite worked-примеры,
-  пороги tier, confidence-лестница 1–5). `python -m engine` работает; `disposition()` (Phase 6) —
-  `NotImplementedError`; категории сериализуются lowercase; staleness Standard=168ч.
+- **45/45 юнит-тестов проходят** (`python -m unittest discover -s tests -t .`): Phase 1 (round-trip,
+  validate, fingerprint, staleness, carry_budget, read-only, checkpoint + NN-1 fallback, resume) + Phase 2
+  (normalize_url, dedupe, RRF, authority-tilt, recency) + Phase 3 (composite, пороги tier, confidence) +
+  Phase 4 (resolve_conflict, classify-вердикты, status/confidence cap, кластеризация). `python -m engine`
+  работает; `disposition()` (Phase 6) — `NotImplementedError`; категории lowercase; staleness Standard=168ч.
 
 ### Known doc inconsistency (не код)
 - `references/source_authority_framework.md`: worked-примеры (§3.4) подписывают `0.79 → Tier B` и

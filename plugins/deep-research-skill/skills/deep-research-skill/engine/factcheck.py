@@ -1,0 +1,157 @@
+"""Phase 4 — fact-check core: deterministic verdict from the evidence structure.
+
+The MODEL proposes claims and, per source, a stance (supporting vs contradicting)
++ an optional semantic category (INCOMPLETE / OPINION / OUTDATED). The ENGINE then
+deterministically resolves conflicts and finalizes the 6-category verdict +
+confidence + status, so the same evidence always yields the same verdict.
+
+Conflict resolution follows source_authority_framework.md (Tier S > Tier A >
+freshness > quantity). The 6 categories are factcheck_system.md §4.1.
+stdlib-only. Python >= 3.10.
+"""
+
+from __future__ import annotations
+
+from enum import Enum
+from typing import Dict, List, Optional
+
+from .freshness import parse_iso
+from .model import Claim, ClaimCategory, ClaimStatus, Source, Tier
+
+_TIER_RANK: Dict[Tier, int] = {Tier.S: 5, Tier.A: 4, Tier.B: 3, Tier.C: 2, Tier.D: 1}
+
+
+def _tier_rank(tier: Optional[Tier]) -> int:
+    return _TIER_RANK.get(tier, 0) if tier is not None else 0
+
+
+class Resolution(str, Enum):
+    NO_EVIDENCE = "no_evidence"
+    SUPPORTED = "supported"
+    CONTRADICTED = "contradicted"
+    DISPUTED = "disputed"  # opposing evidence of comparable strength
+
+
+def _newest(sources: List[Source]):
+    dates = [parse_iso(s.published_at) for s in sources]
+    dates = [d for d in dates if d is not None]
+    return max(dates) if dates else None
+
+
+def resolve_conflict(
+    supporting: List[Source],
+    contradicting: List[Source],
+    now_utc: Optional[str] = None,  # reserved; relative comparison needs no clock
+) -> Resolution:
+    """Decide which side wins by: max tier, then freshness, then count; an
+    irreducible tie is DISPUTED. `now_utc` is accepted for signature symmetry but
+    not required (freshness here is a relative date comparison).
+    """
+    if not supporting and not contradicting:
+        return Resolution.NO_EVIDENCE
+    if not contradicting:
+        return Resolution.SUPPORTED
+    if not supporting:
+        return Resolution.CONTRADICTED
+
+    sup_max = max(_tier_rank(s.tier) for s in supporting)
+    con_max = max(_tier_rank(s.tier) for s in contradicting)
+    if sup_max > con_max:
+        return Resolution.SUPPORTED
+    if con_max > sup_max:
+        return Resolution.CONTRADICTED
+
+    sup_fresh = _newest(supporting)
+    con_fresh = _newest(contradicting)
+    if sup_fresh and con_fresh and sup_fresh != con_fresh:
+        return Resolution.SUPPORTED if sup_fresh > con_fresh else Resolution.CONTRADICTED
+
+    if len(supporting) > len(contradicting):
+        return Resolution.SUPPORTED
+    if len(contradicting) > len(supporting):
+        return Resolution.CONTRADICTED
+    return Resolution.DISPUTED
+
+
+def classify_claim(
+    claim: Claim,
+    sources_by_id: Dict[str, Source],
+    now_utc: Optional[str] = None,
+    model_category: Optional[ClaimCategory] = None,
+) -> ClaimCategory:
+    """Finalize a claim's category from its evidence:
+
+      no evidence            -> UNVERIFIED
+      contradiction wins      -> FALSE
+      comparable opposition   -> OPINION (no consensus, §4.1)
+      supported but a fresher contradicting source exists (time-sensitive)
+                              -> OUTDATED
+      supported               -> the model's semantic category if it set
+                                 INCOMPLETE / OPINION / OUTDATED, else VERIFIED
+    """
+    supporting = [sources_by_id[s] for s in claim.sources if s in sources_by_id]
+    contradicting = [sources_by_id[s] for s in claim.contradicting_sources if s in sources_by_id]
+
+    resolution = resolve_conflict(supporting, contradicting, now_utc)
+    if resolution is Resolution.NO_EVIDENCE:
+        return ClaimCategory.UNVERIFIED
+    if resolution is Resolution.CONTRADICTED:
+        return ClaimCategory.FALSE
+    if resolution is Resolution.DISPUTED:
+        return ClaimCategory.OPINION
+
+    # SUPPORTED — check "was true, newer data differs" before accepting.
+    if contradicting and any(s.time_sensitive for s in supporting):
+        newest_sup = _newest(supporting)
+        newest_con = _newest(contradicting)
+        if newest_sup and newest_con and newest_con > newest_sup:
+            return ClaimCategory.OUTDATED
+
+    if model_category in (ClaimCategory.INCOMPLETE, ClaimCategory.OPINION, ClaimCategory.OUTDATED):
+        return model_category
+    return ClaimCategory.VERIFIED
+
+
+def _cap_confidence(category: ClaimCategory, base: int) -> int:
+    """Bound the Phase-3 base confidence by the verdict. Confidence = how strongly
+    the claim (as a TRUE statement) is supported, so FALSE/UNVERIFIED collapse to 1.
+    """
+    base = max(1, min(5, base))
+    if category is ClaimCategory.VERIFIED:
+        return base
+    if category is ClaimCategory.INCOMPLETE:
+        return min(base, 4)
+    if category in (ClaimCategory.OUTDATED, ClaimCategory.OPINION):
+        return min(base, 3)
+    return 1  # FALSE, UNVERIFIED
+
+
+def factcheck_claim(
+    claim: Claim,
+    sources_by_id: Dict[str, Source],
+    now_utc: Optional[str] = None,
+    model_category: Optional[ClaimCategory] = None,
+) -> Claim:
+    """Set claim.category, claim.confidence (capped) and claim.status from the
+    evidence. MUTATES and returns the claim. Assumes claim.confidence already
+    holds the Phase-3 base (else it is treated as 1).
+    """
+    category = classify_claim(claim, sources_by_id, now_utc, model_category)
+    claim.category = category
+    claim.confidence = _cap_confidence(category, claim.confidence)
+    if category is ClaimCategory.VERIFIED:
+        claim.status = ClaimStatus.CONFIRMED
+    elif category is ClaimCategory.FALSE:
+        claim.status = ClaimStatus.REJECTED
+    else:
+        claim.status = ClaimStatus.PENDING
+    return claim
+
+
+def factcheck_claims(
+    claims: List[Claim],
+    sources: List[Source],
+    now_utc: Optional[str] = None,
+) -> List[Claim]:
+    by_id = {s.id: s for s in sources}
+    return [factcheck_claim(c, by_id, now_utc) for c in claims]
