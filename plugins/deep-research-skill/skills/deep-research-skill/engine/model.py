@@ -243,6 +243,9 @@ class Snapshot:
     stage: str = ""                 # "cp_01_raw"
     phase_completed: int = 0
     next_phase: int = 0
+    sources_screened: int = 0           # gate signal: # sources past Tier/freshness screen
+    extraction_table_complete: bool = False  # gate signal: all sources extracted
+    citations_verified: bool = False    # gate signal: every claim has a checked source
     last_gate: Optional[GateResult] = None
     budget: Budget = field(default_factory=Budget)
     subtasks: List[SubTask] = field(default_factory=list)
@@ -400,6 +403,9 @@ def snapshot_from_dict(payload: Dict[str, Any]) -> Snapshot:
         stage=payload.get("stage", ""),
         phase_completed=int(payload.get("phase_completed", 0)),
         next_phase=int(payload.get("next_phase", 0)),
+        sources_screened=int(payload.get("sources_screened", 0)),
+        extraction_table_complete=bool(payload.get("extraction_table_complete", False)),
+        citations_verified=bool(payload.get("citations_verified", False)),
         last_gate=_gate_from(gate) if gate else None,
         budget=_budget_from(payload.get("budget", {})),
         subtasks=[_subtask_from(x) for x in payload.get("subtasks", [])],
@@ -471,6 +477,17 @@ def validate_snapshot(snapshot: Snapshot) -> List[str]:
 
     if not (0 <= snapshot.next_phase <= 6):
         errors.append(f"next_phase {snapshot.next_phase} out of 0..6")
+
+    # Structural DAG check: every depends_on edge must reference a known subtask.
+    # depends_on entries may carry a typed-edge suffix ("ST-1:STRICT") parsed by
+    # engine/plan.py; here we only isolate the id part (everything before the
+    # last ':') — cycle detection / scheduling policy lives in plan.py, not here.
+    subtask_set = set(subtask_ids)
+    for t in snapshot.subtasks:
+        for dep in t.depends_on:
+            dep_id = dep.rsplit(":", 1)[0]
+            if dep_id not in subtask_set:
+                errors.append(f"subtask {t.id}: unknown dependency {dep_id}")
 
     for name in ("limit_usd", "spent_usd", "loads_used", "loads_cap"):
         if getattr(snapshot.budget, name) < 0:

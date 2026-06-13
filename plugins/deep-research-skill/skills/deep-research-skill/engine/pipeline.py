@@ -89,4 +89,14 @@ def run_pipeline(
     factcheck.factcheck_claims(claims, sources, now_utc, model_categories=model_categories)
     clusters = cluster_claims(claims)
     snapshot = build_snapshot(run_id, task_frame, sources, claims, clusters, now_utc, next_phase=5)
+
+    # Gate signal fields (AC10-6)
+    snapshot.sources_screened = len(sources)
+    # citations_verified: every claim has at least one supporting source
+    snapshot.citations_verified = bool(claims) and all(len(c.sources) >= 1 for c in claims)
+    # extraction_table_complete: every source has a non-empty extract dict
+    snapshot.extraction_table_complete = (
+        all(bool(s.extract) for s in sources) if sources else False
+    )
+
     return snapshot, merges

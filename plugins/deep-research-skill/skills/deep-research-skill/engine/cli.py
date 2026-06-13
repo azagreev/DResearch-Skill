@@ -219,6 +219,15 @@ def _cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_compact(args: argparse.Namespace) -> int:
+    from .compact import build_handoff
+    from .model import snapshot_from_dict
+
+    snapshot = snapshot_from_dict(_read_input(args.input))
+    _emit_json(build_handoff(snapshot))
+    return 0
+
+
 def _cmd_run(args: argparse.Namespace) -> int:
     from . import pipeline
     from . import report as report_mod
@@ -316,6 +325,10 @@ def build_parser() -> argparse.ArgumentParser:
     resume.add_argument("--run-root", required=True)
     resume.add_argument("--now", default=None)
     resume.set_defaults(func=_cmd_resume)
+
+    compact = sub.add_parser("compact", help="snapshot JSON -> compact handoff dict (JSON)")
+    _add_input(compact)
+    compact.set_defaults(func=_cmd_compact)
 
     return parser
 

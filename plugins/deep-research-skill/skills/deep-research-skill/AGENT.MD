@@ -2,7 +2,7 @@
 
 ## Deep Research Skill | Multi-Agent Orchestration Layer
 
-> **Version:** 0.8.1
+> **Version:** 0.9.0
 > **Scope:** Heartbeat, checkpoints, quality gates, cost tracking, error recovery, multi-agent coordination
 > **Philosophy:** *Every agent reports, every gate validates, every failure recovers*
 > **Status:** Testing release
@@ -1336,6 +1336,9 @@ for recovery — the heartbeat is only a hint.
   "created_utc": "2026-06-07T10:02:40Z",
   "task_fingerprint": "<sha1(normalize(question|route|depth|scope))>",
   "stage": "cp_01_raw", "phase_completed": 2, "next_phase": 3,
+  "sources_screened": 12,
+  "extraction_table_complete": true,
+  "citations_verified": false,
   "last_gate": {"id": "G1", "verdict": "PASS"},
   "budget": {"limit_usd": 0.20, "spent_usd": 0.0, "loads_used": 4, "loads_cap": 6},
   "task_frame": {"question": "...", "route": "B", "depth": "Standard",

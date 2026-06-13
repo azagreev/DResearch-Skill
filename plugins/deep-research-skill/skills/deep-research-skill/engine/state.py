@@ -208,6 +208,32 @@ def resume_or_fresh(task_frame: TaskFrame, run_root: Path, now_utc: str) -> Resu
     return ResumeDecision(ResumeMode.FRESH, run_dir, None, [], "fresh run (no matching checkpoint)")
 
 
+# --------------------------------------------------------------------------- #
+# Gate enforcement
+# --------------------------------------------------------------------------- #
+def gate_blocks_transition(snapshot: Snapshot, target_phase: int) -> Optional[str]:
+    """Return a reason string if transitioning to `target_phase` is blocked by
+    a gate signal on `snapshot`, or None if the transition is allowed.
+
+    Rules (AGENT.MD §3.1 gates):
+      - target_phase >= 5 (synthesis / output) requires citations_verified True.
+      - target_phase >= 2 (processing) requires sources_screened > 0.
+
+    Pure function: no I/O, no side effects, deterministic.
+    """
+    if target_phase >= 2 and snapshot.sources_screened <= 0:
+        return (
+            f"gate blocked: target_phase {target_phase} requires sources_screened > 0, "
+            f"got {snapshot.sources_screened}"
+        )
+    if target_phase >= 5 and not snapshot.citations_verified:
+        return (
+            f"gate blocked: target_phase {target_phase} requires citations_verified True, "
+            f"but citations_verified is False"
+        )
+    return None
+
+
 def assert_sources_readonly(before: Snapshot, after: Snapshot) -> List[str]:
     """In-code enforcement of the §8.0 read-only rule: a resumed run must not
     mutate already-collected source payloads. Returns the ids whose

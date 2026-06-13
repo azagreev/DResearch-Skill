@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-06-14
+
+Phase 10 «Enforced Plan & Gates» — машинно-проверяемые гейты и исполнитель плана.
+Разработка мультиагентная (3 builder ∥ → 3 independent verifier ∥). 147 юнит-тестов (было 126).
+
+### Added
+- **Gate-сигналы** в `Snapshot`: `sources_screened:int`, `extraction_table_complete:bool`,
+  `citations_verified:bool` (round-trip). `state.gate_blocks_transition(snapshot, target_phase)` —
+  чистая функция: переход в синтез (≥5) заблокирован, пока `citations_verified` False; в обработку (≥2) —
+  пока `sources_screened==0`. `run_pipeline` выставляет сигналы по факту (citations_verified только если
+  у каждого claim ≥1 источник — не вакуумно-true на пустом наборе).
+- **`engine/compact.py`** — `build_handoff(snapshot)` отдаёт handoff-словарь
+  `{objective, active_plan, inspected_sources, decisions, pending, next_step, do_not_redo}`;
+  `do_not_redo` = id уже отрендеренных источников + подтверждённых claim (не тащить заново). CLI `compact`.
+- **`engine/plan.py`** — DAG-исполнитель над `SubTask.depends_on`: `EdgeKind{STRICT,SOFT,NONE,FEEDBACK}`,
+  типизация рёбер суффиксом `"ST-1:STRICT"`, `topo_order` (уровни ≤`MAX_CONCURRENT`=5, стабильный tie-break),
+  `ready_set` (STRICT-разблокированные PENDING), `validate_plan` (битые deps + недопустимые циклы;
+  FEEDBACK-обратное ребро разрешено).
+- **`tests/test_phase10.py`** (19) + 2 интеграционных регресс-теста.
+- Контракт: `AGENT.MD §8.0` (gate-поля в state-блоке), `SKILL.md §Phase 1` (plan.py исполняет DAG).
+
+### Fixed
+- **`model.validate_snapshot`** изолирует id-часть типизированного `depends_on` (`"ST-1:STRICT"` → `"ST-1"`),
+  иначе типизированное ребро в persisted-Snapshot давало ложный «unknown dependency» (поймано verifier'ом C).
+
+### Verified
+- **147/147 тестов**. Smoke: `run_pipeline` ставит `citations_verified` правдиво; `gate_blocks_transition`
+  блокирует синтез при неверифицированных цитатах; `topo_order` режет 7-ширный набор на уровни [5,2].
+
 ## [0.8.1] - 2026-06-14
 
 Hotfix из `/code-review` Phase 9 (two-layer review поймал то, что прошло мимо AC-верификаторов).
