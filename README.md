@@ -2,7 +2,7 @@
 
 > **Навык глубокого исследования для Claude Code (testing release).** Многофазный workflow с cost-first выполнением, evidence-based отчётами, anti-hallucination протоколом и прозрачным confidence scoring.
 
-**Версия:** 0.9.0 | **Лицензия:** MIT | **Язык:** русский
+**Версия:** 1.0.0-rc | **Лицензия:** MIT | **Язык:** русский
 **Автор:** Andrey Zagreev | **Обратная связь:** [@zagreev](https://t.me/zagreev)
 
 ---
@@ -207,6 +207,70 @@ DResearch-Skill/                              # маркетплейс (коре
 
 ---
 
+## Hook Middleware — ручная установка
+
+Навык включает три hook-скрипта (stdlib only, кросс-платформенные), которые перехватывают вызовы инструментов Claude Code:
+
+| Скрипт | Тип | Назначение |
+|--------|-----|-----------|
+| `hooks/policy_guard.py` | PreToolUse (блокирующий) | Минимальный allow/deny список |
+| `hooks/budget_guard.py` | PreToolUse (блокирующий) | Блокирует платные инструменты при превышении бюджета (exit 2) |
+| `hooks/cost_tracker.py` | PostToolUse | Добавляет строку стоимости в JSON-вывод; всегда exit 0 |
+
+### Платные инструменты (HOOK_MIDDLEWARE.md §6.2)
+
+`firecrawl`, `browserbase`, `serper_api`, `captcha_solve`, `generate_video`.
+
+### Установка (opt-in) — `.claude/settings.json`
+
+> ⚠️ **Хуки НЕ активны по умолчанию.** Они поставляются как **inert-шаблон**
+> `hooks/settings.example.json` и не загружаются Claude Code, пока ты явно не
+> установишь их. Живой `.claude/settings.json` с блокирующим хуком в корне
+> репозитория — это footgun: мисскоупленный (`"*"`) PreToolUse-хук блокирует
+> **каждый** вызов инструмента и может заблокировать саму сессию.
+
+Чтобы включить хуки в **своём** проекте, скопируй шаблон в свой `.claude/settings.json`:
+
+```bash
+cp plugins/deep-research-skill/skills/deep-research-skill/hooks/settings.example.json \
+   .claude/settings.json
+```
+
+Шаблон соблюдает два инварианта безопасности:
+
+1. **Ни один блокирующий хук не на `"*"`.** `budget_guard`/`policy_guard` (PreToolUse,
+   блокирующие) матчат только платные инструменты
+   (`firecrawl|browserbase|serper_api|captcha_solve|generate_video`) — они физически
+   не могут запретить несвязанный вызов. Лишь неблокирующий `cost_tracker`
+   (PostToolUse) использует `"*"`.
+2. **Пути на якоре `$CLAUDE_PROJECT_DIR`**, а не голые относительные — резолвятся
+   при любом текущем каталоге шелла (голый относительный путь зависит от cwd и
+   может «удвоиться»).
+
+### Проверка без живого Claude Code
+
+```bash
+# Просмотр хуков из inert-шаблона (живой конфиг не требуется):
+python -m engine hook --op list
+
+# Тест budget_guard — платный инструмент превышает бюджет (ожидается exit 2):
+echo '{"tool":"firecrawl","spent_usd":0.99,"limit_usd":1.00}' | \
+  python plugins/deep-research-skill/skills/deep-research-skill/hooks/budget_guard.py
+# -> exit code 2, {"action": "block", ...}
+
+# Тест budget_guard — в рамках бюджета (ожидается exit 0):
+echo '{"tool":"firecrawl","spent_usd":0.50,"limit_usd":1.00}' | \
+  python plugins/deep-research-skill/skills/deep-research-skill/hooks/budget_guard.py
+# -> exit code 0, {"action": "approve", ...}
+
+# Запуск через CLI engine:
+python -m engine hook --op test \
+  --script plugins/deep-research-skill/skills/deep-research-skill/hooks/budget_guard.py \
+  --payload '{"tool":"browserbase","spent_usd":0.99,"limit_usd":1.00}'
+```
+
+---
+
 ## Безопасность и этика
 
 - Все методы обхода следуют scope **ETHICAL_ONLY**
@@ -232,5 +296,5 @@ MIT License — см. [LICENSE](LICENSE).
 ---
 
 <p align="center">
-  <b>Deep Research Skill v0.9.0</b> · Автор: Andrey Zagreev · <a href="https://t.me/zagreev">@zagreev</a>
+  <b>Deep Research Skill v1.0.0-rc</b> · Автор: Andrey Zagreev · <a href="https://t.me/zagreev">@zagreev</a>
 </p>

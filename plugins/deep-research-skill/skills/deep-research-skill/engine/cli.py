@@ -228,6 +228,95 @@ def _cmd_compact(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_hook(args: argparse.Namespace) -> int:
+    """Manage and test hook middleware scripts.
+
+    --op list  — print all hooks registered in .claude/settings.json
+    --op test  — run a single hook script on a fixture payload and report exit code
+    --op fire  — alias for test (fire the hook with the given payload)
+    """
+    import subprocess
+
+    op: str = args.op
+
+    # The canonical hook config is an INERT, opt-in template shipped with the
+    # skill: hooks/settings.example.json. We deliberately do NOT auto-read a live
+    # repo-root .claude/settings.json — a live blocking hook in the dev repo is a
+    # footgun (a mis-scoped "*"-matcher PreToolUse hook can lock the maintainer's
+    # own session). Users opt in by copying the template to their own
+    # .claude/settings.json (see README). --config overrides the source.
+    skill_root = Path(__file__).resolve().parent.parent  # <skill_root>
+    default_cfg = skill_root / "hooks" / "settings.example.json"
+    cfg_arg = getattr(args, "config", None)
+    settings_path = Path(cfg_arg) if cfg_arg else default_cfg
+
+    if op == "list":
+        if not settings_path.exists():
+            _emit_json({"error": f"hook config not found: {settings_path}"})
+            return 1
+        try:
+            with open(settings_path, encoding="utf-8") as fh:
+                cfg = json.load(fh)
+        except Exception as exc:
+            _emit_json({"error": f"cannot read settings.json: {exc}"})
+            return 1
+        hooks_cfg = cfg.get("hooks", {})
+        result: dict = {}
+        for event, entries in hooks_cfg.items():
+            result[event] = []
+            for entry in entries:
+                for hook in entry.get("hooks", []):
+                    result[event].append({
+                        "matcher": entry.get("matcher", "*"),
+                        "command": hook.get("command", ""),
+                        "type": hook.get("type", "command"),
+                    })
+        _emit_json(result)
+        return 0
+
+    if op in ("test", "fire"):
+        # --script selects which hook script to run; --payload supplies stdin JSON.
+        script: Optional[str] = getattr(args, "script", None)
+        payload_arg: Optional[str] = getattr(args, "payload", None)
+
+        if not script:
+            _emit_json({"error": "--script is required for --op test/fire"})
+            return 1
+
+        if payload_arg:
+            # Accept either a JSON string or a file path.
+            payload_path = Path(payload_arg)
+            if payload_path.exists():
+                stdin_text = payload_path.read_text(encoding="utf-8")
+            else:
+                stdin_text = payload_arg  # treat as raw JSON string
+        else:
+            stdin_text = sys.stdin.read()
+
+        try:
+            result_proc = subprocess.run(
+                ["python", script],
+                input=stdin_text,
+                capture_output=True,
+                text=True,
+            )
+        except FileNotFoundError as exc:
+            _emit_json({"error": f"cannot run script: {exc}"})
+            return 1
+
+        _emit_json({
+            "script": script,
+            "exit_code": result_proc.returncode,
+            "stdout": result_proc.stdout,
+            "stderr": result_proc.stderr,
+            "blocked": result_proc.returncode == 2,
+        })
+        return 0
+
+    _emit_json({"error": f"unknown --op: {op!r}"})
+    return 1
+
+
 def _cmd_run(args: argparse.Namespace) -> int:
     from . import pipeline
     from . import report as report_mod
@@ -329,6 +418,36 @@ def build_parser() -> argparse.ArgumentParser:
     compact = sub.add_parser("compact", help="snapshot JSON -> compact handoff dict (JSON)")
     _add_input(compact)
     compact.set_defaults(func=_cmd_compact)
+
+    hook = sub.add_parser(
+        "hook",
+        help="manage/test hook middleware (list|test|fire); for self-test without live Claude Code",
+    )
+    hook.add_argument(
+        "--op",
+        choices=("list", "test", "fire"),
+        default="list",
+        help="list: show registered hooks; test/fire: run a hook script on a fixture payload",
+    )
+    hook.add_argument(
+        "--script",
+        default=None,
+        metavar="PATH",
+        help="path to hook script (required for --op test/fire)",
+    )
+    hook.add_argument(
+        "--config",
+        default=None,
+        metavar="PATH",
+        help="hook config to list (default: hooks/settings.example.json, the inert opt-in template)",
+    )
+    hook.add_argument(
+        "--payload",
+        default=None,
+        metavar="JSON_OR_FILE",
+        help="JSON string or path to JSON file piped to the hook script as stdin",
+    )
+    hook.set_defaults(func=_cmd_hook)
 
     return parser
 

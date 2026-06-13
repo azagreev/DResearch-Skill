@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-rc] - 2026-06-14
+
+Phase 11 «Hooks, Telemetry & Verifier» — операционная зрелость. Release candidate.
+Разработка мультиагентная (3 builder ∥ → 3 independent verifier ∥); two-layer review
+поймал серьёзный footgun (см. Fixed). 161 юнит-тест (было 147).
+
+### Added
+- **`engine/telemetry.py`** — `GateCostTracker` (per-gate `BUDGET_ALLOCATION`, `spend()` с алертами
+  WARNING/CRITICAL/EXHAUSTED на 75/90/100% аллокации гейта) + `RunTrace` (append-only,
+  `ts` пробрасывается — без системных часов, `as_list()` → JSON-able).
+- **`engine/verify.py`** — independent verifier: `reverify_claim(claim, sources)` переисчисляет вердикт
+  ТОЛЬКО из claim+sources через чистые `factcheck.classify_claim`/`resolve_conflict`, не мутирует claim и
+  не читает `verdict_explanation` (независимость от рассуждений автора); `disagreement()` флагует расхождение.
+- **Hook-скрипты** (`hooks/budget_guard.py`, `policy_guard.py`, `cost_tracker.py`) — stdlib, читают JSON stdin,
+  exit-коды 0/2 (HOOK_MIDDLEWARE §3.1). **Fail-open**: блокирующий хук никогда не запрещает инструмент
+  из-за собственного сбоя (битый/нечисловой stdin → exit 0); блок (exit 2) — только явное превышение бюджета
+  / deny-list. `budget_guard` бьёт лишь по платным инструментам.
+- **`hooks/settings.example.json`** — **inert opt-in шаблон** (НЕ грузится автоматически). Инварианты:
+  ни один блокирующий хук не на `"*"` (только платные инструменты), пути на `$CLAUDE_PROJECT_DIR`-якоре.
+- **CLI `hook`** (`--op list|test|fire`) — list читает inert-шаблон по умолчанию; самотест без живого Claude Code.
+- **`tests/test_phase11.py`** (14, вкл. fail-open регрессии). Контракт: AGENT.MD §3.4.
+
+### Fixed
+- **Footgun хуков (критично, поймано на review):** первая версия выкатывала ЖИВОЙ `.claude/settings.json`
+  в корень репо с блокирующим PreToolUse-хуком на matcher `"*"` и голым относительным путём к скрипту.
+  Хуки исполняются из cwd шелла → путь удваивался → python exit≠0 → Claude Code трактовал как блок → блокировались
+  ВСЕ инструменты сессии (включая те, которыми чинить). Исправлено: артефакт — inert-шаблон (не живой конфиг);
+  блокирующие хуки скоупятся на платные инструменты; пути на `$CLAUDE_PROJECT_DIR`; скрипты fail-open.
+  Live-конфиг удалён из репо.
+
+### Verified
+- **161/161 тестов**. Smoke: битый stdin → оба guard'а exit 0 (fail-open); `hook --op list` читает шаблон;
+  `reverify_claim` независим (игнорирует verdict_explanation, не мутирует).
+
 ## [0.9.0] - 2026-06-14
 
 Phase 10 «Enforced Plan & Gates» — машинно-проверяемые гейты и исполнитель плана.

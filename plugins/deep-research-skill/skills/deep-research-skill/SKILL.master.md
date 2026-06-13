@@ -1,6 +1,6 @@
 ---
 name: deep-research-master
-version: "0.9.0"
+version: "1.0.0-rc"
 runtime: multi-platform
 requires_connector: true
 categories: [research, analysis, web-scraping, synthesis, verification]
@@ -16,7 +16,7 @@ description: >
 
 # SKILL.master.md — Deep Research Skill: Полная Мастер-Документация
 
-> **Версия:** 0.9.0 | **Дата:** 2026-06-14 | **Статус:** Testing release
+> **Версия:** 1.0.0-rc | **Дата:** 2026-06-14 | **Статус:** Testing release
 >
 > Этот документ — единый источник truth (SSOT) для всех компонентов Deep Research Skill.
 > Он объединяет результаты 17 исследовательских работ, проведённых в январе-июне 2025/2026.
@@ -2603,7 +2603,7 @@ license: MIT
 compatibility: Requires internet access, Python 3.10+
 metadata:
   author: deep-research-team
-  version: "0.9.0"
+  version: "1.0.0-rc"
   category: research
   tags: [research, analysis, web-scraping, synthesis, fact-check]
 allowed-tools: Bash Read Write Fetch Edit web_search browser_visit

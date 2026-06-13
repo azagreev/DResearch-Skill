@@ -1,0 +1,41 @@
+{
+  "_comment": [
+    "OPT-IN HOOK TEMPLATE — NOT loaded automatically. Copy to your own",
+    ".claude/settings.json to enable (see README). Safety invariants:",
+    "  1. No BLOCKING (PreToolUse) hook uses a '*' matcher — blocking hooks are",
+    "     scoped to the specific paid/risky tools they guard, so they can never",
+    "     deny an unrelated tool call. Only the non-blocking PostToolUse hook",
+    "     uses '*'.",
+    "  2. Script paths are anchored to $CLAUDE_PROJECT_DIR (the project root),",
+    "     never a bare relative path, so they resolve regardless of the shell's",
+    "     current working directory."
+  ],
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "firecrawl|browserbase|serper_api|captcha_solve|generate_video",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/plugins/deep-research-skill/skills/deep-research-skill/hooks/policy_guard.py\""
+          },
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/plugins/deep-research-skill/skills/deep-research-skill/hooks/budget_guard.py\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/plugins/deep-research-skill/skills/deep-research-skill/hooks/cost_tracker.py\""
+          }
+        ]
+      }
+    ]
+  }
+}

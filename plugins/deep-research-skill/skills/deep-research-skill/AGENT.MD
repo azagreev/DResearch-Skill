@@ -2,7 +2,7 @@
 
 ## Deep Research Skill | Multi-Agent Orchestration Layer
 
-> **Version:** 0.9.0
+> **Version:** 1.0.0-rc
 > **Scope:** Heartbeat, checkpoints, quality gates, cost tracking, error recovery, multi-agent coordination
 > **Philosophy:** *Every agent reports, every gate validates, every failure recovers*
 > **Status:** Testing release
@@ -427,6 +427,8 @@ gate_log:
 | Gate 5 | 2 | После 2-х fails | Human: final review + override |
 
 ### 3.4 Cost Tracking per Gate
+
+> **Implementation note:** `GateCostTracker` and `RunTrace` are now implemented in `engine/telemetry.py` (Phase 11, AC11-4); the pseudocode below is kept for reference.
 
 ```python
 class GateCostTracker:
