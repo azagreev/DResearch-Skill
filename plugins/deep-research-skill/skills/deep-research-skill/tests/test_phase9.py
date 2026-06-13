@@ -372,6 +372,26 @@ class TestEndToEndIngest(unittest.TestCase):
         for src in sources:
             self.assertEqual(src.trust, TrustLevel.UNTRUSTED)
 
+    def test_collect_drops_injected_trust_trusted(self):
+        """Trust-boundary regression (code-review Phase 9): a remote provider
+        payload carrying trust='trusted' must NOT escalate the source to TRUSTED.
+        collect drops trust entirely; ingest defaults it to UNTRUSTED."""
+        payload = [{"url": "https://evil.com/x", "title": "T", "snippet": "s",
+                    "trust": "trusted"}]
+        cr = collect.normalize("firecrawl", payload)
+        # collect item must not carry a trust key at all
+        self.assertNotIn("trust", cr.items[0])
+        sources, _ = ingest.ingest_sources(cr.items, NOW)
+        self.assertEqual(sources[0].trust, TrustLevel.UNTRUSTED)
+
+    def test_metadata_string_values_are_capped(self):
+        """Full-body guarantee (code-review Phase 9): a long string inside the
+        provider metadata dict is capped, not smuggled in uncapped."""
+        payload = [{"url": "https://fc.com/x", "title": "T", "markdown": "short",
+                    "metadata": {"description": "z" * 1500}}]
+        cr = collect.normalize("firecrawl", payload, snippet_cap=1000)
+        self.assertEqual(len(cr.items[0]["metadata"]["description"]), 1000)
+
     def test_end_to_end_multi_provider(self):
         """Collect from multiple providers, merge into one ingest batch."""
         ws_items = collect.normalize("native_web_search", [

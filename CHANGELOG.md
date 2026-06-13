@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-06-14
+
+Hotfix из `/code-review` Phase 9 (two-layer review поймал то, что прошло мимо AC-верификаторов).
+
+### Fixed
+- **Trust-boundary (security):** `collect.normalize` больше НЕ протаскивает ключ `trust` из provider-native
+  payload в item. Все collect-провайдеры обслуживают удалённый, влияемый-атакующим контент → collected-источник
+  не должен прибывать уже-помеченным `trusted`. Раньше payload с `"trust":"trusted"` мог проехать collect → ingest
+  и стать `TRUSTED`, обходя Phase 8 trust-fence. Теперь trust всегда определяет ingest (default `UNTRUSTED`);
+  TRUSTED-opt-in зарезервирован за не-collect (внутренними) источниками. Код приведён в соответствие со своим docstring.
+- **Full-body guarantee:** строковые значения внутри provider `metadata` теперь усекаются по `snippet_cap`
+  (раньше `metadata` копировался целиком — толстое поле firecrawl `description` могло протащить тело мимо cap).
+
+### Verified
+- **126/126 тестов** — добавлены 2 регрессионных: инъекция `trust:"trusted"` от удалённого провайдера → Source
+  остаётся `UNTRUSTED`; длинная строка в `metadata` усекается.
+
 ## [0.8.0] - 2026-06-14
 
 Phase 9 «Typed Collection Seam» — второй цикл апгрейда по `agents-best-practices`.

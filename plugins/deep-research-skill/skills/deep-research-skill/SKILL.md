@@ -1,6 +1,6 @@
 ---
 name: deep-research-skill
-version: 0.8.0
+version: 0.8.1
 author: Andrey Zagreev (https://t.me/zagreev)
 last_updated: 2026-06-11
 description: |
@@ -71,13 +71,13 @@ echo "CACHE_SKILL_MD=$CACHE_SKILL_MD"
 
 3. **engine-режим.** Движок доступен → по мере готовности фаз делегируй детерминированные шаги CLI (`python -m engine <checkpoint|resume|ingest|rank|score|factcheck|memory|eval|report>`) вместо того, чтобы делать их «в уме».
 
-**Текущий статус (v0.8.0):** движок Phase 1–9 реализован (124 юнит-теста). Phase 9 «Typed Collection Seam» добавила `engine/collect.py` — единый типизированный контракт результата сбора `{status, summary, items[], next_valid_actions[]}` над любым провайдером (web_search/Jina/Firecrawl/…), со snippet-cap, in-session URL-дедупом и risk_class на провайдер. Phase 8 «Trust & Grounding» — trust-fence на retrieved-контент (prompt-injection защита), machine-readable remediation в fact-check и adversarial-тесты. **Все CLI-подкоманды функциональны** (JSON-in/JSON-out): `run`, `collect` (новая), `report`, `ingest`, `rank`, `score`, `factcheck`, `cluster`, `memory`, `eval`, `checkpoint`, `resume`, `doctor`. Без Python / code-execution — prose-only режим. Дорожная карта — `docs/REBUILD_PLAN.md`.
+**Текущий статус (v0.8.1):** движок Phase 1–9 реализован (126 юнит-тестов). Phase 9 «Typed Collection Seam» добавила `engine/collect.py` — единый типизированный контракт результата сбора `{status, summary, items[], next_valid_actions[]}` над любым провайдером (web_search/Jina/Firecrawl/…), со snippet-cap, in-session URL-дедупом и risk_class на провайдер. Phase 8 «Trust & Grounding» — trust-fence на retrieved-контент (prompt-injection защита), machine-readable remediation в fact-check и adversarial-тесты. **Все CLI-подкоманды функциональны** (JSON-in/JSON-out): `run`, `collect` (новая), `report`, `ingest`, `rank`, `score`, `factcheck`, `cluster`, `memory`, `eval`, `checkpoint`, `resume`, `doctor`. Без Python / code-execution — prose-only режим. Дорожная карта — `docs/REBUILD_PLAN.md`.
 
 ---
 
 # Deep Research Skill
 
-> **Версия:** 0.8.0 | **Последнее обновление:** 2026-06-14
+> **Версия:** 0.8.1 | **Последнее обновление:** 2026-06-14
 > **Полная документация:** `SKILL.master.md` (lazy loading)
 > **Heartbeat/Checkpoint протокол:** `AGENT.MD`
 
@@ -632,4 +632,4 @@ CloakBrowser (prevent) → CapSolver (AI, 2-5s, $0.80/1K)
 
 ---
 
-*Deep Research Skill v0.8.0 — testing release. Полная документация: SKILL.master.md. Язык адаптируется к языку пользователя. All phase modules load on-demand — no eager loading.*
+*Deep Research Skill v0.8.1 — testing release. Полная документация: SKILL.master.md. Язык адаптируется к языку пользователя. All phase modules load on-demand — no eager loading.*

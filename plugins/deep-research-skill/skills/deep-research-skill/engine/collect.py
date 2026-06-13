@@ -94,9 +94,19 @@ def _build_item(provider: str, raw: Dict[str, Any], risk: str, snippet_cap: int)
     url, title, snippet = _extract_fields(provider, raw)
     snippet, snip_trunc = _cap(snippet, snippet_cap)
 
-    # Preserve any caller-supplied metadata, then stamp our fields.
+    # Preserve any caller-supplied metadata, then stamp our fields. Cap long
+    # string values so a fat provider metadata field (e.g. firecrawl
+    # description) can't smuggle a full body into the item past snippet_cap.
     raw_meta = raw.get("metadata")
-    metadata: Dict[str, Any] = dict(raw_meta) if isinstance(raw_meta, dict) else {}
+    metadata: Dict[str, Any] = {}
+    meta_capped = False
+    if isinstance(raw_meta, dict):
+        for k, v in raw_meta.items():
+            if isinstance(v, str):
+                metadata[k], t = _cap(v, snippet_cap)
+                meta_capped = meta_capped or t
+            else:
+                metadata[k] = v
     metadata["risk_class"] = risk
     metadata["snippet_truncated"] = snip_trunc
 
@@ -123,11 +133,15 @@ def _build_item(provider: str, raw: Dict[str, Any], risk: str, snippet_cap: int)
                 new_extract[k] = v
         item["extract"] = new_extract
 
-    for key in ("tier", "published_at", "time_sensitive", "scores", "trust"):
+    # NOTE: `trust` is intentionally NOT carried through. Every collect provider
+    # serves remote, attacker-influenceable content, so a collected source must
+    # never arrive pre-marked trusted — ingest defaults it to UNTRUSTED and the
+    # TRUSTED opt-in is reserved for non-collect (internal) sources.
+    for key in ("tier", "published_at", "time_sensitive", "scores"):
         if key in raw and raw[key] is not None:
             item[key] = raw[key]
 
-    return item, (snip_trunc or extract_capped)
+    return item, (snip_trunc or extract_capped or meta_capped)
 
 
 def normalize(
