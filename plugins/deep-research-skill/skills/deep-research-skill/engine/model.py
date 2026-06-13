@@ -74,6 +74,18 @@ class DateConfidence(str, Enum):
     LOW = "low"
 
 
+class TrustLevel(str, Enum):
+    """Whether a source's content may be treated as authoritative instructions.
+
+    Retrieved web content is UNTRUSTED by default: it is evidence to be
+    evaluated, never policy to be followed. Any instructions embedded inside it
+    (prompt injection) are data, not commands. Only sources explicitly marked
+    trusted (e.g. internal data_sources) are TRUSTED.
+    """
+    TRUSTED = "trusted"
+    UNTRUSTED = "untrusted"
+
+
 class ClaimCategory(str, Enum):
     """The 6 fact-check categories (references/factcheck_system.md §4.1).
 
@@ -188,6 +200,7 @@ class Source:
     created_utc: str = ""           # ISO; when collected (drives staleness)
     raw_path: Optional[str] = None  # raw/S1.txt — full payload kept off-context
     extract: Dict[str, Any] = field(default_factory=dict)  # grepped slice in-context
+    trust: TrustLevel = TrustLevel.UNTRUSTED  # retrieved web content is data, not instructions
     published_at: Optional[str] = None
     date_confidence: DateConfidence = DateConfidence.LOW
     time_sensitive: bool = False    # drives staleness re-verify on resume
@@ -207,6 +220,7 @@ class Claim:
     status: ClaimStatus = ClaimStatus.PENDING
     cluster_id: Optional[str] = None
     verdict_explanation: Optional[str] = None
+    remediation: Optional[str] = None  # machine-readable "Violation: … Fix: …" when self-healable
 
 
 @dataclass
@@ -331,6 +345,7 @@ def _source_from(d: Dict[str, Any]) -> Source:
         created_utc=d.get("created_utc", ""),
         raw_path=d.get("raw_path"),
         extract=dict(d.get("extract", {})),
+        trust=TrustLevel(d.get("trust", "untrusted")),
         published_at=d.get("published_at"),
         date_confidence=DateConfidence(d.get("date_confidence", "low")),
         time_sensitive=bool(d.get("time_sensitive", False)),
@@ -351,6 +366,7 @@ def _claim_from(d: Dict[str, Any]) -> Claim:
         status=ClaimStatus(d.get("status", "pending")),
         cluster_id=d.get("cluster_id"),
         verdict_explanation=d.get("verdict_explanation"),
+        remediation=d.get("remediation"),
     )
 
 

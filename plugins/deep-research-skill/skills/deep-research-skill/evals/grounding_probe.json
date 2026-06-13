@@ -1,0 +1,52 @@
+{
+  "_doc": "AC-7b / AC-8 grounding probe. A mixed claim set fact-checked against the source set. Used to assert: every VERIFIED claim cites >=1 existing source id; a zero-source claim never ends VERIFIED or with confidence > 1; and the negative controls (remediation present) actually fire.",
+  "sources": [
+    {
+      "id": "S1",
+      "url": "https://regulator.example/a",
+      "title": "Primary source A",
+      "tier": "S",
+      "published_at": "2026-05-01",
+      "extract": {"snippet": "Fact A is documented here."}
+    },
+    {
+      "id": "S2",
+      "url": "https://news.example/a",
+      "title": "Corroborating source A",
+      "tier": "A",
+      "published_at": "2026-05-02",
+      "extract": {"snippet": "Fact A corroborated independently."}
+    },
+    {
+      "id": "S3",
+      "url": "https://news.example/b",
+      "title": "Single source B",
+      "tier": "A",
+      "published_at": "2026-05-03",
+      "extract": {"snippet": "Fact B asserted by one source only."}
+    }
+  ],
+  "claims": [
+    {
+      "id": "C1",
+      "text": "Fact A is well corroborated",
+      "role": "own_finding",
+      "confidence": 5,
+      "sources": ["S1", "S2"]
+    },
+    {
+      "id": "C2",
+      "text": "Fact B is asserted by a single source",
+      "role": "own_finding",
+      "confidence": 4,
+      "sources": ["S3"]
+    },
+    {
+      "id": "C3",
+      "text": "Unsupported floating claim with no sources",
+      "role": "own_finding",
+      "confidence": 5,
+      "sources": []
+    }
+  ]
+}

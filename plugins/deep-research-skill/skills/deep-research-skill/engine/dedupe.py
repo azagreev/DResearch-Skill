@@ -87,7 +87,9 @@ def _source_text(source: Source) -> str:
     if source.title:
         parts.append(source.title)
     if source.extract:
-        parts.extend(str(v) for v in source.extract.values())
+        # Skip sentinel/meta keys (e.g. "_fence" trust boundary) — they are
+        # identical across all sources and would pollute similarity scoring.
+        parts.extend(str(v) for k, v in source.extract.items() if not str(k).startswith("_"))
     if not parts:
         parts.append(source.url)
     return " ".join(p for p in parts if p)

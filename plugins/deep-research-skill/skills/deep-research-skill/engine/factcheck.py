@@ -126,15 +126,50 @@ def _cap_confidence(category: ClaimCategory, base: int) -> int:
     return 1  # FALSE, UNVERIFIED
 
 
+def _compute_remediation(claim: Claim) -> Optional[str]:
+    """Return a machine-readable Violation/Fix string when the claim needs
+    remediation, or None when none is required (AC-4, AC-5).
+
+    Decision table (evaluated after category and confidence are finalised):
+      UNVERIFIED (0 supporting sources) -> guidance to gather sources.
+      OPINION (disputed)                -> guidance to break the tie.
+      OUTDATED (newer contradicting)    -> guidance to refresh the value.
+      VERIFIED with fewer than 2 sources-> guidance to corroborate.
+      Any other case (VERIFIED >=2, FALSE, INCOMPLETE) -> None.
+    """
+    cid = claim.id
+    if claim.category is ClaimCategory.UNVERIFIED:
+        return (
+            f"Violation: claim {cid} has no supporting sources. "
+            "Fix: web_search for the claim's key terms to gather >=2 sources."
+        )
+    if claim.category is ClaimCategory.OPINION:
+        return (
+            f"Violation: claim {cid} is disputed by comparable-tier sources. "
+            "Fix: web_search a tier-S/regulator source to break the tie."
+        )
+    if claim.category is ClaimCategory.OUTDATED:
+        return (
+            f"Violation: claim {cid} is outdated (newer contradicting source). "
+            "Fix: re-fetch the latest value and update."
+        )
+    if claim.category is ClaimCategory.VERIFIED and len(claim.sources) < 2:
+        return (
+            f"Violation: claim {cid} is VERIFIED on a single source. "
+            "Fix: web_search a second independent source to corroborate."
+        )
+    return None
+
+
 def factcheck_claim(
     claim: Claim,
     sources_by_id: Dict[str, Source],
     now_utc: Optional[str] = None,
     model_category: Optional[ClaimCategory] = None,
 ) -> Claim:
-    """Set claim.category, claim.confidence (capped) and claim.status from the
-    evidence. MUTATES and returns the claim. Assumes claim.confidence already
-    holds the Phase-3 base (else it is treated as 1).
+    """Set claim.category, claim.confidence (capped), claim.status, and
+    claim.remediation from the evidence. MUTATES and returns the claim.
+    Assumes claim.confidence already holds the Phase-3 base (else treated as 1).
     """
     category = classify_claim(claim, sources_by_id, now_utc, model_category)
     claim.category = category
@@ -145,6 +180,7 @@ def factcheck_claim(
         claim.status = ClaimStatus.REJECTED
     else:
         claim.status = ClaimStatus.PENDING
+    claim.remediation = _compute_remediation(claim)
     return claim
 
 

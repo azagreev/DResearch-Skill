@@ -16,6 +16,7 @@ from engine.model import (
     Source,
     TaskFrame,
     Tier,
+    TrustLevel,
     validate_snapshot,
 )
 
@@ -56,7 +57,9 @@ class TestIngest(unittest.TestCase):
         self.assertIn(("S1", "S2"), merges)
         s1 = kept[0]
         self.assertEqual(s1.tier, Tier.S)
-        self.assertEqual(s1.extract, {"snippet": "snip"})
+        self.assertEqual(s1.extract["snippet"], "snip")
+        self.assertIn("_fence", s1.extract)  # trust boundary stamped on every source (Phase 8)
+        self.assertEqual(s1.trust, TrustLevel.UNTRUSTED)
         self.assertEqual(s1.created_utc, NOW)
         self.assertEqual(s1.scores.independence, 0.9)
 
