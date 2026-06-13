@@ -58,6 +58,28 @@ def _cmd_doctor(_args: argparse.Namespace) -> int:
     return 0 if diag["python_ok"] else 1
 
 
+def _cmd_collect(args: argparse.Namespace) -> int:
+    from .collect import normalize
+
+    data = _read_input(args.input)
+    seen_urls_raw = data.get("seen_urls")
+    seen_urls = set(seen_urls_raw) if seen_urls_raw is not None else None
+    result = normalize(
+        data["provider"],
+        data["raw_payload"],
+        snippet_cap=data.get("snippet_cap", 1000),
+        seen_urls=seen_urls,
+    )
+    _emit_json({
+        "status": result.status,
+        "summary": result.summary,
+        "items": result.items,
+        "next_valid_actions": result.next_valid_actions,
+        "error": result.error,
+    })
+    return 0
+
+
 def _cmd_ingest(args: argparse.Namespace) -> int:
     from .ingest import ingest_sources
     from .model import _jsonable
@@ -245,6 +267,10 @@ def build_parser() -> argparse.ArgumentParser:
     _add_input(report)
     report.add_argument("--mode", default="findings", help="report mode: findings|debunk|mixed")
     report.set_defaults(func=_cmd_report)
+
+    collect = sub.add_parser("collect", help="normalize provider payload -> ingest-ready dicts (CollectionResult JSON)")
+    _add_input(collect)
+    collect.set_defaults(func=_cmd_collect)
 
     ingest = sub.add_parser("ingest", help="raw search dicts -> Source records (+ dedupe)")
     _add_input(ingest)

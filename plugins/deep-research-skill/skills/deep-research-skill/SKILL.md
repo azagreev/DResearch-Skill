@@ -1,6 +1,6 @@
 ---
 name: deep-research-skill
-version: 0.7.0
+version: 0.8.0
 author: Andrey Zagreev (https://t.me/zagreev)
 last_updated: 2026-06-11
 description: |
@@ -71,13 +71,13 @@ echo "CACHE_SKILL_MD=$CACHE_SKILL_MD"
 
 3. **engine-режим.** Движок доступен → по мере готовности фаз делегируй детерминированные шаги CLI (`python -m engine <checkpoint|resume|ingest|rank|score|factcheck|memory|eval|report>`) вместо того, чтобы делать их «в уме».
 
-**Текущий статус (v0.7.0):** движок Phase 1–8 реализован (93 юнит-теста). Phase 8 «Trust & Grounding» добавила trust-fence на retrieved-контент (prompt-injection защита), machine-readable remediation в fact-check и adversarial-набор тестов (injection-инвариант + grounding + negative controls). **Все CLI-подкоманды функциональны** (JSON-in/JSON-out): `run` (end-to-end сырьё+claims → cluster-first отчёт), `report`, `ingest`, `rank`, `score`, `factcheck`, `cluster`, `memory`, `eval`, `checkpoint`, `resume`, `doctor`. Без Python / code-execution — prose-only режим. Дорожная карта — `docs/REBUILD_PLAN.md`.
+**Текущий статус (v0.8.0):** движок Phase 1–9 реализован (124 юнит-теста). Phase 9 «Typed Collection Seam» добавила `engine/collect.py` — единый типизированный контракт результата сбора `{status, summary, items[], next_valid_actions[]}` над любым провайдером (web_search/Jina/Firecrawl/…), со snippet-cap, in-session URL-дедупом и risk_class на провайдер. Phase 8 «Trust & Grounding» — trust-fence на retrieved-контент (prompt-injection защита), machine-readable remediation в fact-check и adversarial-тесты. **Все CLI-подкоманды функциональны** (JSON-in/JSON-out): `run`, `collect` (новая), `report`, `ingest`, `rank`, `score`, `factcheck`, `cluster`, `memory`, `eval`, `checkpoint`, `resume`, `doctor`. Без Python / code-execution — prose-only режим. Дорожная карта — `docs/REBUILD_PLAN.md`.
 
 ---
 
 # Deep Research Skill
 
-> **Версия:** 0.7.0 | **Последнее обновление:** 2026-06-14
+> **Версия:** 0.8.0 | **Последнее обновление:** 2026-06-14
 > **Полная документация:** `SKILL.master.md` (lazy loading)
 > **Heartbeat/Checkpoint протокол:** `AGENT.MD`
 
@@ -208,6 +208,29 @@ Layer 4 (Premium):  Firecrawl API, Jina DeepSearch, Browserbase
    - В source inventory / `state` клади **путь к raw-файлу + извлечённый срез** (`raw_path`, `extract`), а не весь сырой текст (см. AGENT.MD §8.0).
    - Режет расход на доминирующей статье (сбор) ~70–90% без внешних зависимостей.
    - *(Опц.)* Если подключён MCP `context-mode` — используй `ctx_fetch_and_index` / `ctx_search` вместо ручного save+grep (то же поведение, автоматически).
+
+#### Typed collection contract (engine-mode)
+
+When the engine is active, raw provider responses SHOULD pass through the
+`collect.normalize(provider, raw_payload, *, snippet_cap, seen_urls)` seam
+before reaching `ingest`.  `normalize` guarantees:
+
+- **Shape:** every call returns a `CollectionResult` with fields
+  `{status, summary, items[], next_valid_actions[]}` plus an optional `error`.
+- **Snippet cap:** each item's snippet is truncated to `snippet_cap` chars
+  (default 1000); `metadata["snippet_truncated"]` flags truncation.
+- **Risk class:** `metadata["risk_class"]` is set per provider —
+  `"SAFE"` for `native_web_search / jina_reader / jina_search / firecrawl`;
+  `"ELEVATED"` for `browserbase / curl`.
+- **In-session URL dedup:** passing a shared `seen_urls` set suppresses
+  duplicate items across successive `normalize` calls in the same run.
+- **Fence boundary:** `collect` intentionally does NOT stamp
+  `extract["_fence"]`; that trust boundary is owned exclusively by
+  `ingest.source_from_raw`.
+
+On `status == "error"` or `"rate_limited"`, `items` is always `[]` and
+`next_valid_actions` carries concrete recovery hints such as
+`"retry_after_backoff"` or `"escalate_to_firecrawl"`.
 
 **Checkpoint:** Сырые данные собраны, source inventory создан, метаданные захвачены.
 
@@ -609,4 +632,4 @@ CloakBrowser (prevent) → CapSolver (AI, 2-5s, $0.80/1K)
 
 ---
 
-*Deep Research Skill v0.7.0 — testing release. Полная документация: SKILL.master.md. Язык адаптируется к языку пользователя. All phase modules load on-demand — no eager loading.*
+*Deep Research Skill v0.8.0 — testing release. Полная документация: SKILL.master.md. Язык адаптируется к языку пользователя. All phase modules load on-demand — no eager loading.*

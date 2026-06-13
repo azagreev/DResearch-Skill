@@ -76,6 +76,11 @@ def run_pipeline(
       cluster -> build Snapshot.
     Returns (snapshot, merges). The model supplies `claims` (with per-source
     stance) and optional `model_categories` hints.
+
+    Note: collect.CollectionResult.items are valid raw_sources — the dicts
+    produced by collect.normalize() already carry url, title, snippet,
+    fetched_via, and metadata, which is exactly what ingest.source_from_raw
+    consumes.  No adapter is needed.
     """
     sources, merges = ingest_sources(raw_sources, now_utc, dedupe=dedupe)
     reconcile_merges(claims, merges)

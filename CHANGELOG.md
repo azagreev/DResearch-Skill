@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-06-14
+
+Phase 9 «Typed Collection Seam» — второй цикл апгрейда по `agents-best-practices`.
+Замыкает «collection живёт только в prose»: вводит типизированный слой между сбором и ingest.
+Разработка мультиагентная (3 builder ∥ → 3 independent verifier ∥). 124 юнит-теста (было 93).
+
+### Added
+- **`engine/collect.py`** — `CollectionResult{status, summary, items[], next_valid_actions[], error?}` +
+  `normalize(provider, raw_payload, *, snippet_cap=1000, seen_urls=None)`. Нормализует provider-native
+  результаты (native web_search / Jina reader+search / Firecrawl / generic) в единый ingest-ready item-dict.
+- **Snippet-cap** — текст усекается до `snippet_cap` символов, факт помечается `metadata["snippet_truncated"]`;
+  полные тела не утекают в контекст.
+- **In-session URL-cache** — `seen_urls` через `dedupe.normalize_url` душит повторные URL между вызовами.
+- **Risk-class на провайдер** — `PROVIDER_RISK` (native/jina/firecrawl=SAFE, browserbase/curl=ELEVATED) →
+  `metadata["risk_class"]`; ELEVATED-провайдеры добавляют `escalate_to_firecrawl` в `next_valid_actions`.
+- **Status/error-контракт** — `status ∈ {ok, partial, error, rate_limited, disabled}`; на error/rate_limited
+  `items=[]` + `error={type,message}` + конкретное `next_valid_actions` (структурированная error-схема).
+- **CLI `collect`** — JSON-in `{provider, raw_payload, snippet_cap?, seen_urls?}` → JSON-out CollectionResult.
+- **`tests/test_phase9.py`** (31) — 3 провайдер-формы, snippet-cap, URL-дедуп, risk_class, error-путь,
+  end-to-end `collect → ingest_sources → Source` (collect НЕ штампует `_fence`/trust — это делает ingest).
+- **`docs/TECHDEBT.md`** — ABP technical-debt ledger (стартует пустым: Phase 8 влилась со всеми AC).
+- Контракт: `SKILL.md §Phase 2` (типизированный collection-контракт), `references/tool_matrix.md` (risk_class).
+
+### Verified
+- **124/124 юнит-теста** (`python -m unittest discover -s tests -t .`). `pipeline.run_pipeline` принимает
+  `collect.normalize(...).items` как `raw_sources` без адаптера. Smoke: jina-форма усекается, error-путь даёт `items=[]`.
+
 ## [0.7.0] - 2026-06-14
 
 Phase 8 «Trust & Grounding» — первый цикл апгрейда по практикам из `agents-best-practices`.

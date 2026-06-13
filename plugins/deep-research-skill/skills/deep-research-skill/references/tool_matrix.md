@@ -1138,6 +1138,25 @@ checkpoint:
 
 ## Appendix A: Quick Reference Card
 
+### Provider Risk Classification (collect seam — Phase 9)
+
+The `collect.normalize()` seam stamps `metadata["risk_class"]` on every
+collected item before it reaches `ingest`.  Risk class reflects the fetch
+posture of each provider:
+
+| Provider | `fetched_via` key | `risk_class` | Notes |
+|----------|-------------------|--------------|-------|
+| Native web search | `native_web_search` | **SAFE** | Server-managed, sandboxed |
+| Jina Reader (r.jina.ai) | `jina_reader` | **SAFE** | Server-side proxy fetch |
+| Jina Search (s.jina.ai) | `jina_search` | **SAFE** | Server-side proxy fetch |
+| Firecrawl scrape/search | `firecrawl` | **SAFE** | Server-managed headless |
+| Browserbase | `browserbase` | **ELEVATED** | Remote browser, less sandboxed |
+| Direct curl / requests | `curl` | **ELEVATED** | Raw network fetch, no proxy |
+
+`ELEVATED` providers add `"escalate_to_firecrawl"` to `next_valid_actions`
+as a recovery hint.  Callers MAY use `risk_class` to gate logging, rate-limit
+policies, or human-review thresholds.
+
 ### Cost Tier Summary
 
 | Tier | Tools | Cost | When |
