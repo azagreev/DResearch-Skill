@@ -24,12 +24,15 @@ from typing import Dict, List, Optional
 from .freshness import parse_iso
 from .model import (
     Budget,
+    ClaimCategory,
     Depth,
     Snapshot,
+    SubTaskStatus,
     TaskFrame,
     snapshot_from_dict,
     snapshot_to_dict,
 )
+from .plan import ready_set
 
 # Staleness windows in hours, by depth (AGENT.MD §8.0).
 STALENESS_WINDOW_HOURS: Dict[Depth, int] = {
@@ -249,3 +252,39 @@ def assert_sources_readonly(before: Snapshot, after: Snapshot) -> List[str]:
         if src.url != prior.url or src.raw_path != prior.raw_path or src.extract != prior.extract:
             changed.append(src.id)
     return changed
+
+
+# --------------------------------------------------------------------------- #
+# Stop-condition oracle
+# --------------------------------------------------------------------------- #
+def should_stop(snapshot: Snapshot) -> Optional[str]:
+    """Return a reason string when the run should stop, else None.  Pure, no I/O.
+
+    Rules (checked in priority order):
+      1. budget_exhausted  — budget.spent_usd >= budget.limit_usd > 0.
+      2. done_condition_met — task_frame.done_condition is set AND
+                              snapshot.citations_verified AND snapshot.next_phase >= 5.
+      3. stalled_uncertainty — no PENDING subtask is STRICT-ready (via plan.ready_set)
+                               AND at least one claim has category UNVERIFIED.
+    """
+    b = snapshot.budget
+    if b.limit_usd > 0 and b.spent_usd >= b.limit_usd:
+        return "budget_exhausted"
+
+    if (
+        snapshot.task_frame.done_condition is not None
+        and snapshot.citations_verified
+        and snapshot.next_phase >= 5
+    ):
+        return "done_condition_met"
+
+    has_unverified = any(
+        c.category == ClaimCategory.UNVERIFIED for c in snapshot.claims
+    )
+    if has_unverified:
+        # ready_set returns PENDING subtask ids whose every STRICT predecessor is DONE.
+        pending_ready = ready_set(snapshot.subtasks)
+        if not pending_ready:
+            return "stalled_uncertainty"
+
+    return None

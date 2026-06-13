@@ -1,0 +1,14 @@
+[
+  {
+    "_doc": "Case 1: climate change research query. S1/S2/S3 are the relevant high-quality sources; S4 is noise.",
+    "query": "What are the main causes of climate change and their relative contributions?",
+    "ranked_ids": ["S1", "S2", "S3", "S4"],
+    "relevant_ids": ["S1", "S2", "S3"]
+  },
+  {
+    "_doc": "Case 2: LLM token pricing query. S1/S3 are relevant; S2/S4 are noise or off-topic.",
+    "query": "How does token pricing work for large language model APIs and what affects cost?",
+    "ranked_ids": ["S1", "S3", "S2", "S4"],
+    "relevant_ids": ["S1", "S3"]
+  }
+]

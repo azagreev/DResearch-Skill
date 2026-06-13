@@ -15,7 +15,7 @@ from dataclasses import dataclass, field, fields, is_dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
-CHECKPOINT_VERSION = "1.0"
+CHECKPOINT_VERSION = "1.1"
 
 
 # --------------------------------------------------------------------------- #
@@ -156,6 +156,8 @@ class TaskFrame:
     scope: List[str] = field(default_factory=list)
     acceptance_criteria: List[str] = field(default_factory=list)
     language: str = "ru"  # output language; the skill adapts to the user
+    done_condition: Optional[str] = None          # v1.1: human-readable stop signal name
+    forbidden_actions: List[str] = field(default_factory=list)  # v1.1: tags that must not appear in open_items
 
 
 @dataclass
@@ -309,6 +311,8 @@ def _task_frame_from(d: Dict[str, Any]) -> TaskFrame:
         scope=list(d.get("scope", [])),
         acceptance_criteria=list(d.get("acceptance_criteria", [])),
         language=d.get("language", "ru"),
+        done_condition=d.get("done_condition"),
+        forbidden_actions=list(d.get("forbidden_actions", [])),
     )
 
 
@@ -383,13 +387,69 @@ def _cluster_from(d: Dict[str, Any]) -> EvidenceCluster:
     )
 
 
-def snapshot_from_dict(payload: Dict[str, Any]) -> Snapshot:
-    """Inverse of snapshot_to_dict, with version check.
+def _migrate(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Upgrade an older checkpoint dict to CHECKPOINT_VERSION in-place (returns a copy).
 
-    Unknown `checkpoint_version` raises (never silently load). Missing optional
-    keys fall back to dataclass defaults, so a value dropped by snapshot_to_dict
-    round-trips back to its default (None / "" / []).
+    Rules:
+      1.0 -> 1.1 : fill defaults for fields added in 1.1 if they are absent:
+                   Snapshot gate signals (sources_screened, extraction_table_complete,
+                   citations_verified) and TaskFrame goal fields (done_condition,
+                   forbidden_actions).
+      Any version > CHECKPOINT_VERSION raises ValueError (never load a future format).
+      Current version is returned unchanged.
     """
+    # Work on a shallow copy so we don't mutate the caller's dict.
+    p = dict(payload)
+    version = p.get("checkpoint_version", "1.0")
+
+    # Compare on (major, minor) only — pad/truncate so equivalent forms like
+    # "1.1" and "1.1.0" compare equal and a patch component never misclassifies
+    # a version as "future". Non-numeric strings ("", "rc") fall back to (0, 0).
+    def _ver(v: str) -> Tuple[int, int]:
+        try:
+            parts = [int(x) for x in str(v).split(".")]
+        except (ValueError, AttributeError):
+            return (0, 0)
+        parts = (parts + [0, 0])[:2]
+        return (parts[0], parts[1])
+
+    if _ver(version) > _ver(CHECKPOINT_VERSION):
+        raise ValueError(
+            f"Unsupported checkpoint_version: {version!r} "
+            f"(current loader supports up to {CHECKPOINT_VERSION!r})"
+        )
+
+    # 1.0 -> 1.1: inject defaults for newly added fields when absent.
+    if _ver(version) <= _ver("1.0"):
+        # Snapshot-level gate signals (were missing in 1.0 checkpoints).
+        p.setdefault("sources_screened", 0)
+        p.setdefault("extraction_table_complete", False)
+        p.setdefault("citations_verified", False)
+        # TaskFrame goal fields.
+        tf = p.get("task_frame")
+        if isinstance(tf, dict):
+            tf = dict(tf)
+            tf.setdefault("done_condition", None)
+            tf.setdefault("forbidden_actions", [])
+            p["task_frame"] = tf
+
+    # Normalize the version string to the canonical current value. Future
+    # versions already raised above, so anything here is <= current; this also
+    # collapses equivalent forms ("1.1.0" -> "1.1") past the strict equality
+    # check in snapshot_from_dict.
+    p["checkpoint_version"] = CHECKPOINT_VERSION
+    return p
+
+
+def snapshot_from_dict(payload: Dict[str, Any]) -> Snapshot:
+    """Inverse of snapshot_to_dict, with version check and migration.
+
+    Calls _migrate first to upgrade older payloads to CHECKPOINT_VERSION.
+    Unknown future `checkpoint_version` raises (never silently load). Missing
+    optional keys fall back to dataclass defaults, so a value dropped by
+    snapshot_to_dict round-trips back to its default (None / "" / []).
+    """
+    payload = _migrate(payload)
     version = payload.get("checkpoint_version", CHECKPOINT_VERSION)
     if version != CHECKPOINT_VERSION:
         raise ValueError(f"Unsupported checkpoint_version: {version!r}")
@@ -485,7 +545,14 @@ def validate_snapshot(snapshot: Snapshot) -> List[str]:
     subtask_set = set(subtask_ids)
     for t in snapshot.subtasks:
         for dep in t.depends_on:
-            dep_id = dep.rsplit(":", 1)[0]
+            # Typed-edge suffix is separated by the last ':'.  A suffix of "NONE"
+            # asserts no real dependency (plan.py NONE semantics) — skip the
+            # unknown-id check for it entirely (TD-1 fix).
+            parts = dep.rsplit(":", 1)
+            # Case-insensitive to match plan.parse_dep, which upper-cases the kind.
+            if len(parts) == 2 and parts[1].strip().upper() == "NONE":
+                continue
+            dep_id = parts[0]
             if dep_id not in subtask_set:
                 errors.append(f"subtask {t.id}: unknown dependency {dep_id}")
 
@@ -494,3 +561,29 @@ def validate_snapshot(snapshot: Snapshot) -> List[str]:
             errors.append(f"budget.{name} negative")
 
     return errors
+
+
+def goal_violations(snapshot: Snapshot) -> List[str]:
+    """Return a list of violation strings for any forbidden action tags that appear
+    in snapshot.open_items (a recorded breach).  Empty list means no violations.
+    Pure, deterministic, no I/O.
+
+    A tag from task_frame.forbidden_actions counts as a violation if it appears
+    as a WHOLE WORD in ANY open_item string (case-sensitive; word-boundary match
+    so e.g. "search" does not match inside "researched").
+    """
+    import re
+
+    violations: List[str] = []
+    forbidden = snapshot.task_frame.forbidden_actions
+    if not forbidden:
+        return violations
+    for tag in forbidden:
+        pattern = re.compile(r"\b" + re.escape(tag) + r"\b")
+        for item in snapshot.open_items:
+            if pattern.search(item):
+                violations.append(
+                    f"forbidden action {tag!r} found in open_items: {item!r}"
+                )
+                break  # one violation per tag is enough
+    return violations

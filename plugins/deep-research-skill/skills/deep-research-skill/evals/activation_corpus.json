@@ -1,0 +1,17 @@
+{
+  "_doc": "Skill-activation eval set. should_trigger: queries that warrant deep research. should_not_trigger: off-topic or trivially simple queries that do not.",
+  "should_trigger": [
+    "What are the long-term economic impacts of universal basic income programs based on existing pilot studies?",
+    "How do mRNA vaccines differ mechanistically from traditional vaccines and what are the immune response differences?",
+    "What is the current scientific consensus on the relationship between ultra-processed food consumption and mental health?",
+    "Compare the geopolitical strategies of major powers in the Arctic region over the last decade.",
+    "What evidence exists for the effectiveness of cognitive behavioral therapy versus medication for treatment-resistant depression?"
+  ],
+  "should_not_trigger": [
+    "What is 2 + 2?",
+    "How do I say hello in French?",
+    "What is the capital of Germany?",
+    "Convert 100 degrees Fahrenheit to Celsius.",
+    "Write a haiku about autumn."
+  ]
+}

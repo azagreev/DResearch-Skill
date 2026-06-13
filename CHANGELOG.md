@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-06-14
+
+Phase 12 «Hardening» — финал апгрейд-цикла по `agents-best-practices`. **Мажорный релиз.**
+Движок проходит весь путь understand → collect → plan → verify → harden с машинно-проверяемыми
+гейтами, защитой от инъекций, телеметрией, независимой ре-верификацией и регрессионным CI.
+199 юнит-тестов (было 161), 0 skipped.
+
+### Added (Phase 12)
+- **Migration ladder** — `CHECKPOINT_VERSION` → `"1.1"`; `model._migrate(payload)` апгрейдит старые
+  checkpoint'ы (1.0 → 1.1, дефолты для gate/goal-полей) перед загрузкой; будущая версия по-прежнему raise.
+  Старый 1.0-checkpoint грузится и валиден — обратная совместимость без потерь.
+- **Goal-state** — `TaskFrame.done_condition` + `forbidden_actions` (round-trip); `model.goal_violations()`;
+  `state.should_stop(snapshot)` (чистая): `budget_exhausted` / `done_condition_met` / `stalled_uncertainty` / None.
+  Без `eval()` — done_condition трактуется как тег, не исполняется.
+- **Golden-corpus CI** — `evals/golden_corpus.json` + `evals/ci_regression.py` (`run_regression()` гоняет
+  ndcg/precision/coverage из `engine.eval` против baseline; падает при просадке ниже порога) +
+  `evals/activation_corpus.json` (should-trigger / should-not-trigger). `tests/test_phase12.py` (38).
+
+### Fixed (Phase 12)
+- **TD-1 (debt-sweep):** `validate_snapshot` выровнен с `validate_plan` по `:NONE`-рёбрам (parse-free,
+  без импорта `EdgeKind` в `model.py`). Регресс-тест `TestValidateSnapshotNoneDep`. Ledger `docs/TECHDEBT.md` пуст.
+- **Skip-guard детекция в `test_phase12`:** `hasattr(TaskFrame, "forbidden_actions")` ложно возвращал False
+  (default_factory-поле не создаёт class-атрибут) → класс скипался; перевёл на `__dataclass_fields__`.
+
+### Сводка апгрейда (Phases 8–12, по `agents-best-practices`)
+- **8 Trust & Grounding** (0.7.0): trust-fence на retrieved-контент, remediation, adversarial-evals.
+- **9 Typed Collection** (0.8.x): `collect.py` — единый контракт сбора, snippet-cap, risk_class.
+- **10 Enforced Gates** (0.9.0): gate-сигналы + блокировка перехода, `compact.py`, `plan.py` DAG.
+- **11 Hooks/Telemetry/Verify** (1.0.0-rc): opt-in хуки (fail-open), `telemetry.py`, независимый `verify.py`.
+- **12 Hardening** (1.0.0): migration, goal-state, golden-corpus CI.
+- Разработка — мультиагентная (freeze → N builder ∥ → N independent verifier ∥ → integration + `/code-review`);
+  two-layer review поймал реальные дефекты (trust-passthrough, validate-typed-dep, hook-footgun) до релиза.
+
 ## [1.0.0-rc] - 2026-06-14
 
 Phase 11 «Hooks, Telemetry & Verifier» — операционная зрелость. Release candidate.
