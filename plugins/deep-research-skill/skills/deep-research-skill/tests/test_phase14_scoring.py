@@ -1,8 +1,9 @@
-"""Phase 14 unit tests — anti-fit veto layer + auditable score breakdown.
+"""Phase 14 unit tests — auditable score breakdown.
 
-Covers score.VetoRules / disqualify / score_source veto path, the breakdown
-trace summing to composite, its round-trip through the model serializer, and the
-report.py rendering of both the breakdown and the veto reason.
+Covers the breakdown trace summing to composite, its round-trip through the model
+serializer, and report.py rendering of the breakdown. (The anti-fit veto layer
+was removed in v1.5 as inert; the `disqualifiers` field is kept for checkpoint
+backward-compat and is covered by a direct round-trip test below.)
 
 Run from the skill dir:  python -m unittest tests.test_phase14_scoring -v
 """
@@ -30,85 +31,6 @@ def _src(**kw):
     base = dict(id="S1", url="https://good.example/a", title="", published_at="2026-06-14")
     base.update(kw)
     return Source(**base)
-
-
-class TestVeto(unittest.TestCase):
-    def test_domain_veto_overrides_high_tier(self):
-        src = _src(
-            url="https://content-farm.example/post",
-            tier=Tier.S,  # would otherwise score very high
-            scores=ScoreComponents(authority=1.0, independence=1.0, traceability=1.0, corroboration=1.0),
-        )
-        score.score_source(src, now_utc=NOW)
-        self.assertEqual(src.tier, Tier.D)
-        self.assertEqual(src.scores.composite, 0.0)
-        self.assertEqual(src.scores.disqualifiers, ["domain:content-farm.example"])
-
-    def test_pattern_veto_on_title(self):
-        # Inject a custom rule to exercise the pattern-match mechanism (the bare
-        # word "retracted" is deliberately NOT in DEFAULT_VETO — see score.py).
-        rules = score.VetoRules(patterns=("retracted",))
-        src = _src(title="Landmark study [RETRACTED]", tier=Tier.A)
-        score.score_source(src, now_utc=NOW, veto=rules)
-        self.assertEqual(src.tier, Tier.D)
-        self.assertEqual(src.scores.composite, 0.0)
-        self.assertEqual(src.scores.disqualifiers, ["pattern:retracted"])
-
-    def test_default_veto_does_not_false_positive_on_discussed_marker(self):
-        # A legitimate, high-authority source that merely *mentions* a retraction
-        # or a sponsor must NOT be vetoed by the conservative DEFAULT_VETO.
-        src = _src(
-            url="https://journal.example/article",
-            title="Review: the 2019 study was later retracted; trial sponsored by NIH",
-            tier=Tier.A,
-            scores=ScoreComponents(independence=0.8, traceability=0.8, corroboration=0.8),
-        )
-        score.score_source(src, now_utc=NOW)
-        self.assertEqual(src.scores.disqualifiers, [])
-        self.assertGreater(src.scores.composite, 0.0)
-
-    def test_empty_vetorules_disables_veto(self):
-        # An injected empty VetoRules() must NOT veto, even a known-bad host.
-        src = _src(
-            url="https://content-farm.example/post",
-            tier=Tier.A,
-            scores=ScoreComponents(independence=0.8, traceability=0.8, corroboration=0.8),
-        )
-        score.score_source(src, now_utc=NOW, veto=score.VetoRules())
-        self.assertEqual(src.scores.disqualifiers, [])
-        self.assertGreater(src.scores.composite, 0.0)
-        self.assertNotEqual(src.tier, None)
-
-    def test_disqualifiers_sorted_and_stable(self):
-        # Two markers in one source -> reasons are sorted and de-duplicated.
-        rules = score.VetoRules(patterns=("retracted", "sponsored by"))
-        src = _src(
-            url="https://x.example/p",
-            title="Sponsored by Acme — RETRACTED notice",
-        )
-        reasons = score.disqualify(src, rules)
-        self.assertEqual(reasons, sorted(reasons))
-        self.assertIn("pattern:retracted", reasons)
-        self.assertIn("pattern:sponsored by", reasons)
-        # Pure: a second call gives the identical list.
-        self.assertEqual(reasons, score.disqualify(src, rules))
-
-    def test_non_vetoed_source_has_empty_disqualifiers(self):
-        src = _src(tier=Tier.A)
-        score.score_source(src, now_utc=NOW)
-        self.assertEqual(src.scores.disqualifiers, [])
-
-    def test_veto_clears_stale_breakdown(self):
-        # A source scored non-vetoed first (breakdown populated), then re-scored
-        # under a rule that now vetoes it, must not carry the stale breakdown.
-        src = _src(url="https://x.example/p", title="ok", tier=Tier.A)
-        score.score_source(src, now_utc=NOW)
-        self.assertTrue(src.scores.breakdown)  # populated on the clean pass
-        rules = score.VetoRules(domains=frozenset({"x.example"}))
-        score.score_source(src, now_utc=NOW, veto=rules)
-        self.assertEqual(src.tier, Tier.D)
-        self.assertEqual(src.scores.breakdown, [])
-        self.assertEqual(src.scores.disqualifiers, ["domain:x.example"])
 
 
 class TestBreakdown(unittest.TestCase):
@@ -142,12 +64,6 @@ class TestBreakdown(unittest.TestCase):
             sum(contrib.values()), src.scores.composite, delta=1e-9
         )
 
-    def test_vetoed_source_breakdown_may_be_empty(self):
-        src = _src(url="https://content-farm.example/p", tier=Tier.S)
-        score.score_source(src, now_utc=NOW)
-        self.assertEqual(src.scores.breakdown, [])
-        self.assertEqual(src.scores.composite, 0.0)
-
 
 class TestRoundTrip(unittest.TestCase):
     def _snap(self, sources):
@@ -174,14 +90,14 @@ class TestRoundTrip(unittest.TestCase):
             sum(c for _, c in rs.breakdown), rs.composite, delta=1e-9
         )
 
-    def test_disqualifiers_round_trip(self):
-        src = _src(url="https://content-farm.example/p", tier=Tier.S)
-        score.score_source(src, now_utc=NOW)
+    def test_disqualifiers_field_round_trips(self):
+        # The veto layer was removed in v1.5, but the `disqualifiers` FIELD is kept
+        # for checkpoint backward-compat — an old snapshot carrying it must still
+        # round-trip losslessly (the field is no longer populated by scoring).
+        src = _src(scores=ScoreComponents(disqualifiers=["legacy:domain"]))
         snap = self._snap([src])
         restored = snapshot_from_dict(snapshot_to_dict(snap))
-        rs = restored.sources[0].scores
-        self.assertEqual(rs.disqualifiers, ["domain:content-farm.example"])
-        self.assertEqual(rs.composite, 0.0)
+        self.assertEqual(restored.sources[0].scores.disqualifiers, ["legacy:domain"])
 
 
 class TestReportRendering(unittest.TestCase):
@@ -200,13 +116,6 @@ class TestReportRendering(unittest.TestCase):
         self.assertIn("## Источники", out)
         self.assertIn("auth", out)
         self.assertIn("corrob", out)
-
-    def test_report_contains_veto_reason(self):
-        src = _src(url="https://content-farm.example/p", tier=Tier.S)
-        score.score_source(src, now_utc=NOW)
-        out = render_markdown(self._snap([src]))
-        self.assertIn("veto", out)
-        self.assertIn("domain:content-farm.example", out)
 
 
 if __name__ == "__main__":

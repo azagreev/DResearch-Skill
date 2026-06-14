@@ -65,12 +65,10 @@ def confidence_emoji(confidence: int) -> str:
 
 
 def _source_annotation(source: Source) -> str:
-    """Inline annotation for a source line: a veto reason when disqualified,
-    otherwise the compact score breakdown. Deterministic order. Pure formatting.
+    """Inline annotation for a source line: the compact score breakdown.
+    Deterministic order. Pure formatting.
     """
     scores = source.scores
-    if scores.disqualifiers:
-        return " — ⛔ veto: " + ", ".join(scores.disqualifiers)
     if scores.breakdown:
         parts = [
             f"{_BREAKDOWN_ABBR.get(label, label)} {contribution:.2f}"

@@ -11,15 +11,18 @@ NOTE: the framework's §3.5 categorization TABLE is canonical here. Its inline
 worked examples label 0.79 as "B" and 0.565 as "C", which contradicts the table
 (0.75-0.89 = A, 0.55-0.74 = B). We follow the table.
 
+The anti-fit veto layer (Phase 14) was removed in v1.5: it fired only on three
+`.example` placeholder hosts and two self-declaring phrases, so it was inert on
+real sources (prompt-injection defense lives in the ingest trust-fence). The
+`ScoreComponents.disqualifiers` field is kept for checkpoint backward-compat and
+is now always empty.
+
 Python >= 3.10.
 """
 
 from __future__ import annotations
 
-import re
-from dataclasses import dataclass, field
 from typing import Dict, List, Optional
-from urllib.parse import urlsplit
 
 from .freshness import recency_score
 from .model import Claim, ScoreComponents, Source, Tier
@@ -41,83 +44,6 @@ _BREAKDOWN_TERMS = (
     ("traceability", W_TRACEABILITY, "traceability"),
     ("corroboration", W_CORROBORATION, "corroboration"),
 )
-
-
-# --------------------------------------------------------------------------- #
-# Anti-fit veto layer (Phase 14)
-# --------------------------------------------------------------------------- #
-@dataclass(frozen=True)
-class VetoRules:
-    """Disqualification rules: a source that matches is vetoed to composite=0 / D.
-
-    `domains`  — exact-host match (case-insensitive), e.g. a known content farm.
-    `patterns` — substrings/regexes tested (case-insensitive) against the source's
-                 title + snippet + url; self-declaring markers like an advertorial
-                 banner or an embedded prompt-injection payload.
-    An empty VetoRules() disables veto entirely (matches nothing).
-    """
-    domains: frozenset = field(default_factory=frozenset)
-    patterns: tuple = field(default_factory=tuple)
-
-
-# Conservative default seed: known content-farm / injection example hosts plus
-# only *self-declaring* markers that disqualify a source wherever they appear.
-# Deliberately NOT included: bare content words like "retracted" / "sponsored by"
-# — for a fact-checking engine a legitimate, high-authority source routinely
-# *discusses* a retraction or names a sponsor in its snippet, so substring-veto on
-# those inverts the signal. Operators who want them can inject a stricter
-# VetoRules; the mechanism stays fully general.
-DEFAULT_VETO = VetoRules(
-    domains=frozenset({
-        "content-farm.example",
-        "spamblog.example",
-        "ai-generated-news.example",
-    }),
-    patterns=(
-        "this is an advertisement",
-        "ignore previous instructions",
-    ),
-)
-
-
-def _host(url: str) -> str:
-    """Lowercased host of `url` (no port), '' when unparseable."""
-    netloc = urlsplit(url).netloc.lower()
-    if "@" in netloc:
-        netloc = netloc.rsplit("@", 1)[1]
-    if ":" in netloc:
-        netloc = netloc.rsplit(":", 1)[0]
-    return netloc
-
-
-def disqualify(source: Source, rules: VetoRules) -> List[str]:
-    """Return the sorted, de-duplicated veto reasons matched by `source`.
-
-    Pure: no mutation. Empty list = not vetoed. A domain hit reads
-    `domain:<host>`; a pattern hit reads `pattern:<pattern>`. The matched
-    haystack is title + extract snippet + url, lowercased.
-    """
-    reasons: set = set()
-
-    host = _host(source.url)
-    for domain in rules.domains:
-        if host == domain.lower():
-            reasons.add(f"domain:{domain}")
-
-    snippet = source.extract.get("snippet", "") if isinstance(source.extract, dict) else ""
-    haystack = " ".join((source.title or "", str(snippet), source.url or "")).lower()
-    for pat in rules.patterns:
-        lowered = pat.lower()
-        hit = lowered in haystack
-        if not hit:
-            try:
-                hit = re.search(pat, haystack, re.IGNORECASE) is not None
-            except re.error:
-                hit = False
-        if hit:
-            reasons.add(f"pattern:{pat}")
-
-    return sorted(reasons)
 
 # Authority criterion value by initial tier classification (§1.2-1.6 weights).
 _AUTHORITY_COMPONENT: Dict[Tier, float] = {
@@ -185,30 +111,17 @@ def score_source(
     source: Source,
     now_utc: Optional[str] = None,
     half_life_days: float = 30.0,
-    veto: Optional[VetoRules] = None,
 ) -> Source:
     """Fill `source.scores.composite` and (re)assign `source.tier` from it.
     MUTATES and returns `source`.
 
     If `now_utc` is given and the recency component is not yet set, it is filled
     from freshness.recency_score(source.published_at, now_utc, half_life_days),
-    wiring the Phase-2 recency signal into the Phase-3 composite.
-
-    Anti-fit veto (Phase 14): if the source matches `veto` (defaults to
-    DEFAULT_VETO; pass an empty VetoRules() to disable), its composite is forced
-    to 0.0, tier to D, and the matched reasons recorded in scores.disqualifiers —
-    overriding any high authority tier. A non-vetoed source additionally gets its
-    auditable scores.breakdown populated.
+    wiring the Phase-2 recency signal into the Phase-3 composite. The auditable
+    `scores.breakdown` is populated; `scores.disqualifiers` is cleared (the veto
+    layer was removed in v1.5).
     """
     components = source.scores
-    rules = veto if veto is not None else DEFAULT_VETO
-    reasons = disqualify(source, rules)
-    if reasons:
-        components.composite = 0.0
-        components.disqualifiers = reasons
-        components.breakdown = []  # never carry a stale trace alongside a veto
-        source.tier = Tier.D
-        return source
 
     # Seed the Authority component from the source's initial tier classification
     # (the §1.2-1.6 weight) when it hasn't been set, so the composite is not
@@ -228,9 +141,8 @@ def score_sources(
     sources: List[Source],
     now_utc: Optional[str] = None,
     half_life_days: float = 30.0,
-    veto: Optional[VetoRules] = None,
 ) -> List[Source]:
-    return [score_source(s, now_utc, half_life_days, veto) for s in sources]
+    return [score_source(s, now_utc, half_life_days) for s in sources]
 
 
 def claim_confidence(claim: Claim, sources_by_id: Dict[str, Source]) -> int:

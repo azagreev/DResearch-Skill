@@ -282,11 +282,6 @@ def rescore_snapshot(
     would instead re-seed Authority from the tier the *previous* pass overwrote,
     breaking idempotency.
 
-    Veto rules are re-applied on re-derivation: score_source uses DEFAULT_VETO
-    (rescore does not forward a custom veto), exactly as the collect-time pipeline
-    does — so this is faithful "re-apply current rules", not an asymmetry; a source
-    cannot be newly vetoed on rescore under unchanged rules.
-
     The source payload (url / raw_path / extract) is never touched; this is
     enforced by assert_sources_readonly(before, after), whose changed-id list is
     returned as the third tuple element (empty == read-only invariant held).
