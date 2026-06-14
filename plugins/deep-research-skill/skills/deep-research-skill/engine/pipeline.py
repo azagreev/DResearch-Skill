@@ -110,6 +110,12 @@ def run_pipeline(
     # evidence (verify ignores verdict_explanation — independence preserved) and
     # record the result + disagreement flag on the claim's metadata. Done AFTER
     # factcheck so claim.category reflects the finalized verdict being checked.
+    # SCOPE NOTE: factcheck and verify share classify_claim, so on a hint-less run
+    # they agree by construction and `disagreement` is always False. The flag only
+    # fires when a `model_categories` hint was *honored* by factcheck but diverges
+    # from the pure-evidence re-derivation — i.e. it catches an honored author/model
+    # semantic override, NOT general evidence-vs-recorded drift. Broader drift
+    # detection (e.g. perturbation-based reverify) is a deliberate future follow-up.
     for claim in claims:
         claim.metadata["disagreement"] = verify.disagreement(claim, sources, now_utc)
         claim.metadata["reverified_category"] = verify.reverify_claim(
