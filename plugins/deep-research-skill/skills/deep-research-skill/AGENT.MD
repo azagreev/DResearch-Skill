@@ -2,7 +2,7 @@
 
 ## Deep Research Skill | Multi-Agent Orchestration Layer
 
-> **Version:** 1.0.0
+> **Version:** 1.1.0
 > **Scope:** Heartbeat, checkpoints, quality gates, cost tracking, error recovery, multi-agent coordination
 > **Philosophy:** *Every agent reports, every gate validates, every failure recovers*
 > **Status:** Testing release
@@ -426,9 +426,44 @@ gate_log:
 | Gate 4 | 2 | После 2-х fails | Human: restructuring |
 | Gate 5 | 2 | После 2-х fails | Human: final review + override |
 
-### 3.4 Cost Tracking per Gate
+### 3.4 Cost Tracking per Gate & Cache Metrics
 
 > **Implementation note:** `GateCostTracker` and `RunTrace` are now implemented in `engine/telemetry.py` (Phase 11, AC11-4); the pseudocode below is kept for reference.
+
+#### Метрики кэширования (Phase 13, engine/telemetry.py)
+
+Начиная с Phase 13 движок фиксирует сигналы кэша prompt-prefix'а в каждом событии `RunTrace` и предоставляет три чистые вспомогательные функции. Все они детерминированы: не читают системных часов, не используют рандомизацию.
+
+**Разреженные поля RunTrace.append (добавляются, только если не None):**
+
+```python
+RunTrace.append(
+    event,
+    *,
+    # ...существующие поля без изменений...
+    prompt_bundle_hash:  str | None = None,   # bundle_hash(system+tool schemas)
+    tool_bundle_hash:    str | None = None,   # bundle_hash(сериализованных tool-схем)
+    cache_read_tokens:   int | None = None,   # токены, прочитанные из кэша хоста
+    cache_write_tokens:  int | None = None,   # токены, записанные в кэш хоста
+    cached_tokens:       int | None = None,   # суммарный cached_tokens из ответа API
+) -> None
+```
+
+Все пять полей **разреженные**: если хост не вернул данные — поле отсутствует в записи события (не пишется `null`). Уже имеющиеся call-сайты `RunTrace.append` остаются без изменений.
+
+**Вспомогательные функции:**
+
+| Функция | Сигнатура | Семантика |
+|---------|-----------|-----------|
+| `bundle_hash` | `bundle_hash(text: str) -> str` | sha256-hex от `text.encode("utf-8")`. Детектор дрейфа prefix'а: если хэш изменился между ходами — кэш инвалидируется. Чистая, детерминированная. |
+| `cache_hit_rate` | `cache_hit_rate(read, write) -> Optional[float]` | `read / (read + write)`. Возвращает `None`, если `read` или `write` равны `None`, либо `(read + write) == 0`. Чистая. Захватывается в RunTrace через `cache_read_tokens` / `cache_write_tokens`. |
+| `cache_fragmentation` | `cache_fragmentation(history, *, threshold: int = 3) -> Optional[str]` | Принимает последовательность `cached_tokens` по ходам (int или None). Возвращает `"WARNING"`, если **последние `threshold` подряд идущих** записей — все точно `0`; иначе `None`. Запись `None` (хост не отчитался) прерывает нулевую серию (неизвестно ≠ фрагментировано). Менее чем `threshold` записей → `None`. Чистая, детерминированная; история передаётся аргументом. |
+
+**Интерпретация сигналов:**
+
+- `bundle_hash` отличается от предыдущего хода → prefix изменился → cache miss гарантирован на следующем ходу.
+- `cache_hit_rate` → целевой диапазон ~0.8–0.95 при стабильном prefix'е; падение ниже 0.5 на нескольких ходах подряд указывает на дрейф.
+- `cache_fragmentation` = `"WARNING"` → последние три хода показали `cached_tokens == 0`; вероятна инвалидация кэша или смена volatile-зоны в prompt'е.
 
 ```python
 class GateCostTracker:
@@ -1360,6 +1395,30 @@ for recovery — the heartbeat is only a hint.
 graceful-degradation finalize and before any human escalation. Write the `state` block FIRST, verify it
 parses, then the narrative. Never overwrite a prior `NN`. The `sources[].extract` field carries the actual
 gathered data — that is what makes resume free of re-collection.
+
+#### Именованные границы компактизации (Phase 13, engine/compact.py)
+
+Помимо record-чекпоинтов, движок определяет три именованные **границы компактизации** — точки, в которых накопленный контекст прогона передаётся следующему агенту через `build_handoff`. Граница определяется НЕ по числу токенов, а по завершённой фазе.
+
+```python
+COMPACTION_BOUNDARIES: tuple[str, ...] = (
+    "post_collection",   # сбор завершён, впереди обработка — next_phase == 3 (cp_01_raw)
+    "pre_synthesis",     # анализ завершён, впереди синтез   — next_phase == 5
+    "pre_report",        # синтез завершён, впереди отчёт     — next_phase == 6
+)
+```
+
+**Функция `should_compact(snapshot) -> Optional[str]`** возвращает имя ближайшей границы, если снимок находится ровно на ней, и `None` в остальных случаях. Сопоставление выполняется **только по `snapshot.next_phase`** (фаза, в которую прогон вот-вот войдёт):
+
+| Имя границы | Условие на `snapshot` | Опорный чекпоинт |
+|-------------|----------------------|------------------|
+| `"post_collection"` | `next_phase == 3` | `cp_01_raw` (`phase_completed == 2`) |
+| `"pre_synthesis"` | `next_phase == 5` | после анализа |
+| `"pre_report"` | `next_phase == 6` | после синтеза (`cp_04_reviewed`) |
+
+Числа фаз закреплены **опорным state-блоком §8.0** (выше): post-collection чекпоинт `cp_01_raw` имеет `next_phase == 3`, а `pipeline.build_snapshot` выставляет `next_phase == 5`, когда прогон готов к синтезу. Эти же пороги согласованы с `engine/state.gate_blocks_transition` (переход к фазе ≥ 5 требует `citations_verified = True`).
+
+При обнаружении границы вызывается `build_handoff(snapshot)` (из `engine/compact.py`) — без изменений. Результат передаётся принимающему агенту вместо полного снимка. Функция `should_compact` чистая и детерминированная: принимает только снимок, не читает часы и не имеет побочных эффектов.
 
 **Resume entry point (runs in Phase 0, before any planning):**
 1. Scan `./research_output/checkpoints/` for `cp_*.md`. None → fresh run.

@@ -55,7 +55,7 @@ def _evaluate_case(case: Dict[str, Any], thresholds: Dict[str, float], k: int) -
     # Import here so the module is importable even from outside the skill dir,
     # but we defer the import to avoid a hard dependency at module load time.
     try:
-        from engine.eval import ndcg_at_k, precision_at_k, source_coverage
+        from engine.eval import cost_efficiency, ndcg_at_k, precision_at_k, source_coverage
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
             "engine.eval not found. Run from the skill directory or add it to sys.path."
@@ -79,12 +79,34 @@ def _evaluate_case(case: Dict[str, Any], thresholds: Dict[str, float], k: int) -
                 f"{metric_name}={value:.4f} < threshold={threshold:.4f}"
             )
 
+    # Optional cost / latency gate (Phase 13, AC13-5). Only evaluated when the
+    # case carries BOTH cost_usd and elapsed_sec — backward compatible: cases
+    # without these keys skip the cost check entirely. Thresholds are optional:
+    #   cost_per_item_max  — fail if cost_per_item EXCEEDS this ceiling
+    #   min_items_per_sec  — fail if items_per_sec falls BELOW this floor
+    if "cost_usd" in case and "elapsed_sec" in case:
+        n_items = int(case.get("n_items", len(ranked)))
+        eff = cost_efficiency(n_items, float(case["cost_usd"]), float(case["elapsed_sec"]))
+        metrics["cost_per_item"] = eff["cost_per_item"]
+        metrics["items_per_sec"] = eff["items_per_sec"]
+
+        cost_per_item_max = thresholds.get("cost_per_item_max")
+        if cost_per_item_max is not None and eff["cost_per_item"] > cost_per_item_max:
+            failures.append(
+                f"cost_per_item={eff['cost_per_item']:.4f} > max={cost_per_item_max:.4f}"
+            )
+        min_items_per_sec = thresholds.get("min_items_per_sec")
+        if min_items_per_sec is not None and eff["items_per_sec"] < min_items_per_sec:
+            failures.append(
+                f"items_per_sec={eff['items_per_sec']:.4f} < min={min_items_per_sec:.4f}"
+            )
+
     return {
         "query": case.get("query", ""),
         "metrics": metrics,
         "thresholds_applied": {
             m: thresholds.get(m, DEFAULT_THRESHOLDS.get(m, 0.0))
-            for m in metrics
+            for m in ("ndcg_at_k", "precision_at_k", "source_coverage")
         },
         "passed": len(failures) == 0,
         "failures": failures,

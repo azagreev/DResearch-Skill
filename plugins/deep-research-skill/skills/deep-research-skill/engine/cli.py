@@ -182,6 +182,28 @@ def _cmd_eval(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_cost(args: argparse.Namespace) -> int:
+    from .telemetry import GateCostTracker
+
+    data = _read_input(args.input)
+    tracker = GateCostTracker(float(data["total_budget"]))
+    # Record each spend in order; keep the LAST snapshot per gate so the report
+    # reflects cumulative state.  Track which gates are currently alerting.
+    per_gate: dict = {}
+    for entry in data.get("spends", []):
+        snapshot = tracker.spend(entry["gate"], float(entry["amount"]))
+        per_gate[entry["gate"]] = snapshot
+    total_spent = round(sum(tracker.spent.values()), 2)
+    alerts = [gate for gate, snap in per_gate.items() if snap["alert"] is not None]
+    _emit_json({
+        "per_gate": per_gate,
+        "total_spent": total_spent,
+        "total_remaining": round(tracker.total - total_spent, 2),
+        "alerts": alerts,
+    })
+    return 0
+
+
 def _cmd_checkpoint(args: argparse.Namespace) -> int:
     from .model import snapshot_from_dict
     from .state import save_checkpoint
@@ -402,6 +424,10 @@ def build_parser() -> argparse.ArgumentParser:
     eval_ = sub.add_parser("eval", help="precision@k / nDCG@k / jaccard / coverage")
     _add_input(eval_)
     eval_.set_defaults(func=_cmd_eval)
+
+    cost = sub.add_parser("cost", help="per-gate budget report + alerts (GateCostTracker)")
+    _add_input(cost)
+    cost.set_defaults(func=_cmd_cost)
 
     checkpoint = sub.add_parser("checkpoint", help="serialize a snapshot to cp_NN_<stage>.md")
     _add_input(checkpoint)

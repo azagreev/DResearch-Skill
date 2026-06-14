@@ -16,7 +16,65 @@ RunTrace
 
 from __future__ import annotations
 
-from typing import Optional
+import hashlib
+from typing import Optional, Sequence
+
+
+# ---------------------------------------------------------------------------
+# Cache & cost helpers (Phase 13, AC13-1 / AC13-2)
+# ---------------------------------------------------------------------------
+
+def cache_hit_rate(read: Optional[int], write: Optional[int]) -> Optional[float]:
+    """Fraction of cache traffic served from a read (prompt-cache hit rate).
+
+    Returns ``read / (read + write)``.  Returns None when either operand is
+    None (host did not report it) or when ``read + write == 0`` (no cache
+    traffic — a rate would be undefined, not 0).  Pure / deterministic.
+    """
+    if read is None or write is None:
+        return None
+    denom = read + write
+    if denom == 0:
+        return None
+    return read / denom
+
+
+def bundle_hash(text: str) -> str:
+    """sha256 hex digest of ``text`` encoded as UTF-8.
+
+    Deterministic, pure.  Used to detect prompt/tool prefix drift between turns
+    (a changed hash means the cacheable prefix moved and the cache was busted).
+    """
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def cache_fragmentation(
+    history: Sequence[Optional[int]],
+    *,
+    threshold: int = 3,
+) -> Optional[str]:
+    """Detect a run of zero cached_tokens at the END of ``history``.
+
+    Parameters
+    ----------
+    history
+        Per-turn ``cached_tokens`` values (ints, or None when the host did not
+        report a turn).  Passed in by the caller — no clock is read.
+    threshold
+        How many trailing consecutive *exact* zeros constitute fragmentation.
+
+    Returns
+    -------
+    "WARNING" when the last ``threshold`` entries are all exactly 0; otherwise
+    None.  A None entry (unknown) breaks the zero-run — unknown is not the same
+    as fragmented.  Fewer than ``threshold`` entries -> None.  Deterministic.
+    """
+    if threshold <= 0 or len(history) < threshold:
+        return None
+    tail = history[-threshold:]
+    if all(value == 0 for value in tail):
+        return "WARNING"
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -173,6 +231,11 @@ class RunTrace:
         claim_id:   Optional[str] = None,
         why_stopped: Optional[str] = None,
         ts:         Optional[str] = None,
+        prompt_bundle_hash: Optional[str] = None,
+        tool_bundle_hash:   Optional[str] = None,
+        cache_read_tokens:  Optional[int] = None,
+        cache_write_tokens: Optional[int] = None,
+        cached_tokens:      Optional[int] = None,
     ) -> None:
         """Append an event record to the trace.
 
@@ -184,6 +247,15 @@ class RunTrace:
         claim_id    – optional claim identifier
         why_stopped – optional reason why the engine stopped at this point
         ts          – ISO-8601 timestamp string (caller-supplied; no default)
+        prompt_bundle_hash – optional hash of the cacheable prompt prefix (drift)
+        tool_bundle_hash   – optional hash of the cacheable tool-definition prefix
+        cache_read_tokens  – optional prompt-cache read tokens this turn
+        cache_write_tokens – optional prompt-cache write tokens this turn
+        cached_tokens      – optional cached_tokens reported by the host this turn
+
+        The cache/bundle fields are sparse: each is added to the record ONLY
+        when not None, matching the existing optional-field pattern, so a host
+        that does not report cache metrics leaves the record graceful.
         """
         record: dict = {"event": event}
         # Include optional fields only when supplied so as_list() stays sparse.
@@ -192,6 +264,11 @@ class RunTrace:
         if claim_id   is not None: record["claim_id"]    = claim_id
         if why_stopped is not None: record["why_stopped"] = why_stopped
         if ts         is not None: record["ts"]          = ts
+        if prompt_bundle_hash is not None: record["prompt_bundle_hash"] = prompt_bundle_hash
+        if tool_bundle_hash   is not None: record["tool_bundle_hash"]   = tool_bundle_hash
+        if cache_read_tokens  is not None: record["cache_read_tokens"]  = cache_read_tokens
+        if cache_write_tokens is not None: record["cache_write_tokens"] = cache_write_tokens
+        if cached_tokens      is not None: record["cached_tokens"]      = cached_tokens
         self.events.append(record)
 
     def as_list(self) -> list[dict]:

@@ -1,6 +1,6 @@
 ---
 name: deep-research-skill
-version: 1.0.0
+version: 1.1.0
 author: Andrey Zagreev (https://t.me/zagreev)
 last_updated: 2026-06-11
 description: |
@@ -71,13 +71,13 @@ echo "CACHE_SKILL_MD=$CACHE_SKILL_MD"
 
 3. **engine-режим.** Движок доступен → по мере готовности фаз делегируй детерминированные шаги CLI (`python -m engine <checkpoint|resume|ingest|rank|score|factcheck|memory|eval|report>`) вместо того, чтобы делать их «в уме».
 
-**Текущий статус (v1.0.0):** движок Phase 1–12 реализован (199 юнит-тестов). Phase 9 «Typed Collection Seam» добавила `engine/collect.py` — единый типизированный контракт результата сбора `{status, summary, items[], next_valid_actions[]}` над любым провайдером (web_search/Jina/Firecrawl/…), со snippet-cap, in-session URL-дедупом и risk_class на провайдер. Phase 8 «Trust & Grounding» — trust-fence на retrieved-контент (prompt-injection защита), machine-readable remediation в fact-check и adversarial-тесты. **Все CLI-подкоманды функциональны** (JSON-in/JSON-out): `run`, `collect` (новая), `report`, `ingest`, `rank`, `score`, `factcheck`, `cluster`, `memory`, `eval`, `checkpoint`, `resume`, `doctor`. Без Python / code-execution — prose-only режим. Дорожная карта — `docs/REBUILD_PLAN.md`.
+**Текущий статус (v1.1.0):** движок Phase 1–13 реализован (247 юнит-тестов, 0 skipped). Phase 13 «Cost & Cache» добавила захват cache-сигналов в телеметрию (`cache_hit_rate`, `bundle_hash`, `cache_fragmentation`), именованные границы компактизации (`should_compact`), CLI-подкоманду `cost` и cost/latency-регрессию — см. секцию «Prompt Caching & Stable Prefix». Phase 9 «Typed Collection Seam» добавила `engine/collect.py` — единый типизированный контракт результата сбора `{status, summary, items[], next_valid_actions[]}` над любым провайдером (web_search/Jina/Firecrawl/…), со snippet-cap, in-session URL-дедупом и risk_class на провайдер. Phase 8 «Trust & Grounding» — trust-fence на retrieved-контент (prompt-injection защита), machine-readable remediation в fact-check и adversarial-тесты. **Все CLI-подкоманды функциональны** (JSON-in/JSON-out): `run`, `collect`, `report`, `ingest`, `rank`, `score`, `factcheck`, `cluster`, `memory`, `eval`, `cost` (новая), `checkpoint`, `resume`, `doctor`. Без Python / code-execution — prose-only режим. Дорожная карта — `docs/REBUILD_PLAN.md`.
 
 ---
 
 # Deep Research Skill
 
-> **Версия:** 1.0.0 | **Последнее обновление:** 2026-06-14
+> **Версия:** 1.1.0 | **Последнее обновление:** 2026-06-14
 > **Полная документация:** `SKILL.master.md` (lazy loading)
 > **Heartbeat/Checkpoint протокол:** `AGENT.MD`
 
@@ -613,6 +613,48 @@ CloakBrowser (prevent) → CapSolver (AI, 2-5s, $0.80/1K)
 
 ---
 
+## Prompt Caching & Stable Prefix
+
+Управление кэшем prompt'а позволяет снизить стоимость и задержку многоходового прогона. Этот раздел объясняет, как движок структурирует контекст для максимизации cache-hit rate и как телеметрия отслеживает качество кэша.
+
+### Структура: стабильный front + volatile tail
+
+Кэш prompt'а работает, когда **начало** контекста не меняется между ходами. Движок соблюдает следующую полярность:
+
+| Зона | Содержимое | Изменяемость |
+|------|-----------|--------------|
+| **Стабильный front (кэшируемый)** | Этот SKILL.md + AGENT.MD + сериализованные tool-схемы | Неизменен в течение прогона — при обновлении скилла необходим перезапуск |
+| **Volatile tail (не кэшируется)** | Снимок состояния прогона, свежие результаты сбора, текущий ход пользователя | Меняется при каждом ходу |
+
+**Почему progressive disclosure важна для кэша.** Принцип §4 (Progressive Disclosure) — не переписывать running summary при каждом ходу, а раскрывать детали по запросу — напрямую защищает стабильность prefix'а: меньше изменений в системной части контекста → выше cache-hit rate.
+
+**Детерминированный JSON — ключ к стабильности.** Движок эмитирует JSON с фиксированным порядком ключей (через `snapshot_to_dict`). Изменение порядка ключей инвалидирует кэш так же, как изменение значений, поэтому порядок зафиксирован в контракте модели.
+
+### Детектор дрейфа: bundle_hash
+
+Функция `bundle_hash(text: str) -> str` (из `engine/telemetry`) вычисляет sha256-hex от `text.encode("utf-8")`. Она применяется к конкатенации системного prompt'а и tool-схем перед каждым ходом:
+
+- Хэш совпал с предыдущим ходом → prefix стабилен → cache hit ожидаем.
+- Хэш изменился → prefix изменился → cache miss гарантирован. Двигатель логирует это событие через `RunTrace.append(..., prompt_bundle_hash=..., tool_bundle_hash=...)`.
+
+### Захватываемые сигналы
+
+Три метрики из `engine/telemetry` дают полную картину качества кэша на протяжении прогона:
+
+**`cache_hit_rate(read, write) -> Optional[float]`**
+Отношение `read / (read + write)`, где `read` и `write` — токены, прочитанные из кэша и записанные в него соответственно. Возвращает `None`, если хост не предоставил данные (`read` или `write` равны `None`) либо знаменатель равен нулю. Значение ~0.8–0.95 типично при стабильном prefix'е.
+
+**`cache_fragmentation(history, *, threshold=3) -> Optional[str]`**
+Принимает последовательность значений `cached_tokens` по ходам. Возвращает `"WARNING"`, если последние `threshold` (по умолчанию 3) подряд идущих записей содержат ровно `0`. Значение `None` в истории (хост не отчитался) прерывает нулевую серию — неизвестное значение не равнозначно нулю. Сигнал `"WARNING"` означает возможную инвалидацию кэша или непреднамеренное попадание данных во front-зону.
+
+**Оба сигнала graceful при отсутствии данных:** если хост не возвращает информацию о кэше, функции возвращают `None` — движок продолжает работу без сбоев, telemetry просто не заполняется.
+
+### Как движок использует сигналы
+
+Все пять полей кэша в `RunTrace.append` разреженные — записываются только при наличии данных от хоста. Это позволяет корпусу регрессионных тестов (`evals/ci_regression.py`) оценивать прогоны с метриками стоимости и задержки без изменения поведения для прогонов без них.
+
+---
+
 ## References
 
 | Файл | Описание |
@@ -634,4 +676,4 @@ CloakBrowser (prevent) → CapSolver (AI, 2-5s, $0.80/1K)
 
 ---
 
-*Deep Research Skill v1.0.0 — testing release. Полная документация: SKILL.master.md. Язык адаптируется к языку пользователя. All phase modules load on-demand — no eager loading.*
+*Deep Research Skill v1.1.0 — testing release. Полная документация: SKILL.master.md. Язык адаптируется к языку пользователя. All phase modules load on-demand — no eager loading.*

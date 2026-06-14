@@ -11,5 +11,5 @@ Phase 0 (this release): package skeleton + runtime doctor + CLI seam.
 Pipeline subcommands are registered stubs that light up phase by phase.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __all__ = ["__version__"]

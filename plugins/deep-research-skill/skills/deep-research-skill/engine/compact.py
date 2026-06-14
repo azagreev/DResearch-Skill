@@ -10,9 +10,56 @@ AC10-3: build_handoff(snapshot) -> dict with EXACTLY these keys:
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 from .model import ClaimStatus, Snapshot, SourceStatus
+
+
+# --------------------------------------------------------------------------- #
+# Compaction boundaries (Phase 13, AC13-4)
+# --------------------------------------------------------------------------- #
+
+# The named points in the phase model where the engine should compact context
+# before crossing into the next phase. The order follows the run timeline.
+#
+# Phase model — authoritative source is the §8.0 resume anchor (AGENT.MD:1375),
+# whose canonical post-collection checkpoint cp_01_raw is {phase_completed: 2,
+# next_phase: 3}. Phases: 1 scoping, 2 collection, 3 processing, 4 analysis,
+# 5 synthesis, 6 final report. pipeline.build_snapshot sets next_phase=5 once
+# analysis is done and the run is about to synthesize.
+#
+# Mapping (keyed on snapshot.next_phase = the phase about to be entered):
+#   post_collection : collection done, about to process  -> next_phase == 3  (cp_01_raw)
+#   pre_synthesis   : analysis done, about to synthesize  -> next_phase == 5
+#   pre_report      : synthesis done, about to render     -> next_phase == 6
+COMPACTION_BOUNDARIES: Tuple[str, str, str] = (
+    "post_collection",
+    "pre_synthesis",
+    "pre_report",
+)
+
+
+def should_compact(snapshot: Snapshot) -> Optional[str]:
+    """Return the COMPACTION_BOUNDARIES name the snapshot sits on, else None.
+
+    The decision is derived from ``snapshot.next_phase`` (the phase the run is
+    about to enter). The phase numbers are pinned by the §8.0 resume anchor
+    (AGENT.MD:1375): the post-collection checkpoint cp_01_raw is next_phase 3,
+    and pipeline.build_snapshot sets next_phase 5 once the run is about to
+    synthesize:
+
+      * next_phase == 3 -> "post_collection" (cp_01_raw: collection done, about to process)
+      * next_phase == 5 -> "pre_synthesis"   (analysis done, about to synthesize)
+      * next_phase == 6 -> "pre_report"      (synthesis done, about to render the report)
+
+    Any other phase is off-boundary and yields None.  Pure, deterministic.
+    """
+    boundary_by_next_phase = {
+        3: "post_collection",
+        5: "pre_synthesis",
+        6: "pre_report",
+    }
+    return boundary_by_next_phase.get(snapshot.next_phase)
 
 
 # --------------------------------------------------------------------------- #

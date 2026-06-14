@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-06-14
+
+Phase 13 «Cost & Cache» — закрывает оставшийся ABP-чеклист в нашей зоне контроля (prompt-caching / cost).
+Движок захватывает cache-сигналы host'а (graceful), вводит дисциплину стабильного кэш-префикса, именованные
+границы компактизации и реальный cost/latency-трекинг. 247 юнит-тестов (было 199), 0 skipped. Детерминизм
+и stdlib-only сохранены. Snapshot/checkpoint-формат не менялся (cache-статы — runtime-телеметрия).
+
+### Added (Phase 13)
+- **Cache-сигналы (graceful)** — `RunTrace.append` принимает 5 опциональных sparse-полей
+  (`prompt_bundle_hash`, `tool_bundle_hash`, `cache_read_tokens`, `cache_write_tokens`, `cached_tokens`):
+  добавляются в запись только при наличии, отсутствуют — если host их не отдаёт (ничего не падает).
+  Чистые хелперы `cache_hit_rate(read, write) -> Optional[float]` (zero/None-safe), `bundle_hash(text) -> str`
+  (sha256-hex, детектор дрейфа префикса).
+- **Алерт фрагментации кэша** — `cache_fragmentation(history, *, threshold=3) -> Optional[str]`: `"WARNING"`
+  на N подряд turn'ов с `cached_tokens == 0`; `None`-запись (host не отдал) разрывает zero-run. Детерминирован.
+- **Именованные границы компактизации** — `compact.COMPACTION_BOUNDARIES`
+  (`post_collection` / `pre_synthesis` / `pre_report`) + чистая `should_compact(snapshot) -> Optional[str]`,
+  ключ — `next_phase` (3 / 5 / 6), числа закреплены §8.0 resume-якорем (`cp_01_raw` = `next_phase 3`).
+- **Cost-трекинг + eval cost/latency** — CLI-подкоманда `cost` (per-gate отчёт + алерты через `GateCostTracker`);
+  `eval.cost_efficiency(n_items, cost_usd, elapsed_sec)` (zero-safe); `ci_regression.run_regression` опционально
+  проверяет `cost_per_item_max` / `min_items_per_sec` для кейсов с `cost_usd`+`elapsed_sec` — **обратно совместимо**
+  (кейсы без этих полей cost-проверку пропускают; существующий `golden_corpus.json` по-прежнему `passed=True`).
+- **Доки** — `SKILL.md` секция «Prompt Caching & Stable Prefix»; `AGENT.MD` §3.4 (cache-метрики) и §8 (границы).
+- `tests/test_phase13.py` (45 non-vacuous тестов: graceful cache-поля, 0-деление, fragmentation, детерминизм
+  JSON, границы компактизации, cost-математика, ci cost-порог pass/fail, backward-compat golden_corpus).
+
+### Fixed (Phase 13, integration)
+- **`should_compact` post_collection boundary** — двухслойное ревью выявило кросс-пакетный семантический
+  баг: код срабатывал на `next_phase == 2` (это *до* сбора), тогда как канонический post-collection чекпоинт
+  `cp_01_raw` (§8.0 resume-якорь) имеет `next_phase == 3` → граница не ловилась бы на реальном чекпоинте.
+  Исправлено на `next_phase == 3`; доки и тест приведены к §8.0-нумерации.
+
 ## [1.0.0] - 2026-06-14
 
 Phase 12 «Hardening» — финал апгрейд-цикла по `agents-best-practices`. **Мажорный релиз.**

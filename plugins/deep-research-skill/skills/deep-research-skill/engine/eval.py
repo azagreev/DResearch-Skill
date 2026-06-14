@@ -72,3 +72,16 @@ def source_coverage(retrieved: Iterable[str], relevant: Iterable[str]) -> float:
     if not relevant_set:
         return 0.0
     return len(set(retrieved) & relevant_set) / len(relevant_set)
+
+
+def cost_efficiency(n_items: int, cost_usd: float, elapsed_sec: float) -> Dict[str, float]:
+    """Cost / throughput summary for a run (Phase 13, AC13-5).
+
+    Returns ``{"cost_per_item": cost_usd/n_items, "items_per_sec": n_items/elapsed_sec}``,
+    with both quotients defaulting to 0.0 on a zero (or non-positive) denominator
+    so the function is division-by-zero safe.  Pure, deterministic — no clock.
+    """
+    return {
+        "cost_per_item": cost_usd / n_items if n_items > 0 else 0.0,
+        "items_per_sec": n_items / elapsed_sec if elapsed_sec > 0 else 0.0,
+    }
