@@ -1,22 +1,24 @@
-# 🔍 Deep Research Skill
+# Deep Research Skill
 
 > **Навык глубокого исследования для Claude Code (testing release).** Многофазный workflow с cost-first выполнением, evidence-based отчётами, anti-hallucination протоколом и прозрачным confidence scoring.
 
-**Версия:** 1.0.0 | **Лицензия:** MIT | **Язык:** русский
+**Версия:** 1.1.0 | **Лицензия:** MIT | **Язык:** русский
 **Автор:** Andrey Zagreev | **Обратная связь:** [@zagreev](https://t.me/zagreev)
 
 ---
 
 ## Возможности
 
-- **6-фазный workflow**: Анализ задачи → Декомпозиция → Сбор → Фактчекинг → Синтез → Вывод
+- **7-фазный workflow**: Анализ задачи → Декомпозиция → Сбор → Верификация → Синтез → Вывод → Приёмка
 - **Cost-First выполнение**: 4-уровневая иерархия инструментов — начинай бесплатно, эскалируй только при необходимости
 - **Evidence-Based отчёты**: каждое утверждение имеет citation, каждый источник — tier
 - **Anti-Hallucination протокол**: zero tolerance — FactCheck Agent ветирует каждый факт
 - **4 уровня глубины**: Quick (30 мин) → Standard (1–2 ч) → Deep (3–5 ч) → Exhaustive (5+ ч)
 - **Confidence Scoring**: шкала 1–5 с визуальными индикаторами для каждого утверждения
 - **Checkpoint Recovery**: адаптивный heartbeat (2–10 мин) + checkpoint на каждом gate — откат к последнему gate, а не к нулю
-- **30+ инструментов**: полная матрица с рейтингами cost/quality/authority
+- **Cost & Cache телеметрия**: захват cache-сигналов, `cache_hit_rate`, `bundle_hash`, именованные границы компактизации, CLI `cost`
+- **Typed Collection Seam**: единый контракт `CollectionResult` над любым провайдером (web_search/Jina/Firecrawl/…) со snippet-cap и risk_class
+- **CI-регрессия**: 247 юнит-тестов, golden corpus, opional cost/latency-пороги
 
 ---
 
@@ -24,14 +26,14 @@
 
 | Платформа | Для кого | Установка | Файл |
 |-----------|----------|-----------|------|
-| **Claude Code / Cowork** | 🌟 Рекомендуется — установка в 1 клик, без файлов | Plugin marketplace (GitHub) | плагин |
+| **Claude Code / Cowork** | Рекомендуется — установка в 1 клик, без файлов | Plugin marketplace (GitHub) | плагин |
 | **Claude.ai** | Опытные пользователи, нужна загрузка скилла | Загрузка ZIP/`.skill` | папка скилла |
 
 ---
 
 ## Быстрый старт
 
-### Claude Code / Cowork — плагин-маркетплейс 🌟 (рекомендуется, без файлов)
+### Claude Code / Cowork — плагин-маркетплейс (рекомендуется, без файлов)
 
 **Cowork (для не-разработчиков):**
 1. Открой **Customize** (слева внизу)
@@ -48,11 +50,11 @@
 
 **Активация.** Навык подключается автоматически по запросам вроде «проведи исследование», «deep research», «анализ рынка», «конкурентный анализ», «собери информацию о», «сравни», «тренды в», «due diligence». Можно вызвать и явно: `/deep-research-skill:deep-research-skill`.
 
-#### 🔄 Обновление плагина
+#### Обновление плагина
 
 Сторонние маркетплейсы (как этот) **не авто-обновляются по умолчанию** — авто-pull на старте сессии включён только для официального маркетплейса Anthropic. После нового релиза кнопка Update может оставаться неактивной, пока обновление не подтянуть.
 
-**✅ Рекомендуется — включить auto-update один раз** (дальше плагин обновляется сам на старте сессии):
+**Рекомендуется — включить auto-update один раз** (дальше плагин обновляется сам на старте сессии):
 - **Claude Code (CLI/desktop):** `/plugin` → **Marketplaces** → `deep-research-skill` → включить **auto-update**.
 - **Cowork:** включи тумблер **auto-update** на странице плагина, если он показан.
 
@@ -74,28 +76,58 @@
 ## Архитектура
 
 ```
-SKILL.md (точка входа)
-  ├── Phase 0: Анализ задачи     → references/strategy_guide.md
-  ├── Phase 1: Декомпозиция      → references/decomposition_guide.md
-  ├── Phase 2: Сбор              → references/tool_matrix.md, references/cost_matrix_full.md
-  ├── Phase 3: Фактчекинг        → references/factcheck_system.md
-  ├── Phase 4: Синтез            → references/output_formats.md
-  ├── Phase 5: Вывод             → references/output_formats.md
-  └── Phase 6: Приёмка           → references/acceptance_framework.md
+SKILL.md (точка входа — 7-фазный workflow)
+  ├── Phase 0: Анализ задачи & роутинг
+  ├── Phase 1: Декомпозиция
+  ├── Phase 2: Сбор              → engine/collect.py (CollectionResult)
+  ├── Phase 3: Верификация       → engine/factcheck.py, engine/verify.py
+  ├── Phase 4: Синтез
+  ├── Phase 5: Вывод             → engine/report.py
+  └── Phase 6: Приёмка
 
 AGENT.MD (слой оркестрации)
   ├── Heartbeat Protocol (адаптивный интервал, §1.2)
-  ├── Checkpoint Recovery
-  ├── Quality Gates
-  └── Cost Tracking
+  ├── Checkpoint Recovery (5 чекпоинтов)
+  ├── Quality Gates (5 gate'ов с бюджетной аллокацией)
+  └── Cost & Cache телеметрия (§3.4, именованные границы §8)
 
-references/ (20 документов):
-  ├── Core: tool_matrix, strategy_guide, decomposition_guide, acceptance_framework
-  ├── Output: output_formats, factcheck_system, source_authority_framework, cost_matrix_full
-  ├── Analysis: competitive_landscape
-  ├── Infra: HOOK_MIDDLEWARE, PLATFORM_DISTRIBUTION
-  └── Research: jina_reader, bypass_paywall, ecc, modelsdev, captcha,
-                 academic_skills, skill_marketplace, browserbase, prompt_master
+engine/ (Python-движок, stdlib-only, Python ≥3.10)
+  ├── pipeline.py    — сборщик полного прогона
+  ├── collect.py     — типизированный CollectionResult над провайдерами
+  ├── ingest.py      — raw → Source + дедупликация
+  ├── rank.py, score.py — ранжирование источников
+  ├── factcheck.py   — FactCheck Agent, категории + claim-вердикты
+  ├── verify.py      — независимая ре-деривация вердикта
+  ├── cluster.py, memory.py — кластеризация и сессионная память
+  ├── report.py      — генерация отчёта
+  ├── eval.py        — IR-метрики + cost_efficiency
+  ├── compact.py     — build_handoff + should_compact (named boundaries)
+  ├── plan.py        — DAG-исполнитель SubTask
+  ├── state.py       — gate_blocks_transition, validate_snapshot
+  ├── telemetry.py   — GateCostTracker, RunTrace, cache helpers
+  └── cli.py         — JSON-in/JSON-out CLI (15 subcommands)
+
+evals/
+  ├── golden_corpus.json      — baseline ранжирования
+  ├── ci_regression.py        — CI-проверка метрик + cost/latency-пороги
+  ├── activation_corpus.json  — should-trigger / should-not-trigger
+  ├── injection_probe.json    — adversarial prompt-injection тесты
+  └── grounding_probe.json    — grounding/false-confidence тесты
+
+hooks/ (opt-in, inert по умолчанию)
+  ├── budget_guard.py         — PreToolUse: блок при превышении бюджета
+  ├── cost_tracker.py         — PostToolUse: трекинг стоимости
+  ├── policy_guard.py         — PreToolUse: allow/deny список
+  └── settings.example.json  — шаблон для ручной установки
+
+tests/ (247 тестов, 0 skipped)
+  └── test_phase1.py … test_phase13.py, test_adversarial.py, test_cli.py …
+
+references/ (20 документов — источники истины для prose-режима)
+  ├── tool_matrix.md, strategy_guide.md, decomposition_guide.md
+  ├── acceptance_framework.md, output_formats.md, factcheck_system.md
+  ├── source_authority_framework.md, cost_matrix_full.md
+  └── … (HOOK_MIDDLEWARE.md, PLATFORM_DISTRIBUTION.md, исследования)
 ```
 
 ---
@@ -105,45 +137,60 @@ references/ (20 документов):
 ```
 DResearch-Skill/                              # маркетплейс (корень репозитория)
 ├── .claude-plugin/
-│   └── marketplace.json                      # манифест маркетплейса (name, owner, plugins[])
+│   └── marketplace.json                      # манифест маркетплейса
 ├── plugins/
 │   └── deep-research-skill/
 │       ├── .claude-plugin/
-│       │   └── plugin.json                   # манифест плагина
+│       │   └── plugin.json                   # манифест плагина (version: 1.1.0)
 │       └── skills/
 │           └── deep-research-skill/          # self-contained навык
-│               ├── SKILL.md                  # точка входа навыка
+│               ├── SKILL.md                  # точка входа (7-фазный workflow)
 │               ├── SKILL.master.md           # полная мастер-документация
-│               ├── AGENT.MD                  # протокол оркестрации (heartbeat/checkpoint)
-│               ├── LEGAL_METHODS.md          # этичные легальные методы доступа
-│               ├── CAPTCHA_MODULE.md         # стратегии работы с CAPTCHA
+│               ├── AGENT.MD                  # протокол оркестрации
+│               ├── LEGAL_METHODS.md
+│               ├── CAPTCHA_MODULE.md
+│               ├── engine/                   # Python-движок (stdlib-only)
+│               ├── evals/                    # CI-регрессия + корпуса
+│               ├── hooks/                    # opt-in hook-скрипты
+│               ├── tests/                    # 247 юнит-тестов
 │               └── references/               # 20 reference-документов
-│                   ├── tool_matrix.md
-│                   ├── strategy_guide.md
-│                   ├── decomposition_guide.md
-│                   ├── acceptance_framework.md
-│                   ├── output_formats.md
-│                   ├── factcheck_system.md
-│                   ├── source_authority_framework.md
-│                   ├── cost_matrix_full.md
-│                   ├── competitive_landscape.md
-│                   ├── HOOK_MIDDLEWARE.md
-│                   ├── PLATFORM_DISTRIBUTION.md
-│                   ├── jina_reader_research.md
-│                   ├── bypass_paywall_research.md
-│                   ├── ecc_research.md
-│                   ├── modelsdev_research.md
-│                   ├── captcha_research.md
-│                   ├── academic_skills_research.md
-│                   ├── skill_marketplace_research.md
-│                   ├── browserbase_research.md
-│                   └── prompt_master_research.md
-├── docs/                                     # документация репозитория
+├── docs/
+│   ├── REBUILD_PLAN.md
+│   ├── TECHDEBT.md
 │   ├── installation.md
 │   └── usage.md
+├── examples/
+│   └── supervised_orchestrator.workflow.js
 ├── CHANGELOG.md
-├── LICENSE                                   # MIT
-└── README.md                                 # этот файл
+├── LICENSE
+└── README.md
+```
+
+---
+
+## CLI-подкоманды движка
+
+```bash
+# JSON-in/JSON-out (все subcommands):
+python -m engine <subcommand> [--input file.json]
+
+# Доступные subcommands:
+run          — полный прогон pipeline
+collect      — нормализация провайдера → CollectionResult
+ingest       — raw → Source[]
+rank         — ранжирование источников
+score        — scoring источников
+factcheck    — верификация claims
+cluster      — кластеризация
+memory       — сессионная память
+eval         — IR-метрики + cost_efficiency
+cost         — per-gate cost-отчёт через GateCostTracker  # новое v1.1.0
+report       — генерация отчёта
+compact      — build_handoff (do_not_redo)
+checkpoint   — запись/чтение checkpoint
+resume       — восстановление из checkpoint
+hook         — list/test/fire hook-скриптов
+doctor       — диагностика окружения
 ```
 
 ---
@@ -188,6 +235,7 @@ DResearch-Skill/                              # маркетплейс (коре
 ## Требования
 
 - **Claude Code** ≥ 4.6 (или Claude.ai с включённым code execution)
+- **Python** ≥ 3.10 (для запуска движка локально; stdlib-only, pip не нужен)
 - **MCP-серверы** (опционально):
   - `browserbase` — облачная браузерная автоматизация
   - `file-system` — локальные файловые операции
@@ -217,16 +265,10 @@ DResearch-Skill/                              # маркетплейс (коре
 | `hooks/budget_guard.py` | PreToolUse (блокирующий) | Блокирует платные инструменты при превышении бюджета (exit 2) |
 | `hooks/cost_tracker.py` | PostToolUse | Добавляет строку стоимости в JSON-вывод; всегда exit 0 |
 
-### Платные инструменты (HOOK_MIDDLEWARE.md §6.2)
-
-`firecrawl`, `browserbase`, `serper_api`, `captcha_solve`, `generate_video`.
-
-### Установка (opt-in) — `.claude/settings.json`
-
-> ⚠️ **Хуки НЕ активны по умолчанию.** Они поставляются как **inert-шаблон**
+> **Хуки НЕ активны по умолчанию.** Они поставляются как **inert-шаблон**
 > `hooks/settings.example.json` и не загружаются Claude Code, пока ты явно не
 > установишь их. Живой `.claude/settings.json` с блокирующим хуком в корне
-> репозитория — это footgun: мисскоупленный (`"*"`) PreToolUse-хук блокирует
+> репозитория — footgun: мисскоупленный (`"*"`) PreToolUse-хук блокирует
 > **каждый** вызов инструмента и может заблокировать саму сессию.
 
 Чтобы включить хуки в **своём** проекте, скопируй шаблон в свой `.claude/settings.json`:
@@ -238,35 +280,22 @@ cp plugins/deep-research-skill/skills/deep-research-skill/hooks/settings.example
 
 Шаблон соблюдает два инварианта безопасности:
 
-1. **Ни один блокирующий хук не на `"*"`.** `budget_guard`/`policy_guard` (PreToolUse,
-   блокирующие) матчат только платные инструменты
-   (`firecrawl|browserbase|serper_api|captcha_solve|generate_video`) — они физически
-   не могут запретить несвязанный вызов. Лишь неблокирующий `cost_tracker`
-   (PostToolUse) использует `"*"`.
-2. **Пути на якоре `$CLAUDE_PROJECT_DIR`**, а не голые относительные — резолвятся
-   при любом текущем каталоге шелла (голый относительный путь зависит от cwd и
-   может «удвоиться»).
+1. **Ни один блокирующий хук не на `"*"`.** `budget_guard`/`policy_guard` (PreToolUse, блокирующие) матчат только платные инструменты (`firecrawl|browserbase|serper_api|captcha_solve|generate_video`).
+2. **Пути на якоре `$CLAUDE_PROJECT_DIR`** — резолвятся при любом текущем каталоге шелла.
 
 ### Проверка без живого Claude Code
 
 ```bash
-# Просмотр хуков из inert-шаблона (живой конфиг не требуется):
+# Просмотр хуков из inert-шаблона:
 python -m engine hook --op list
 
 # Тест budget_guard — платный инструмент превышает бюджет (ожидается exit 2):
 echo '{"tool":"firecrawl","spent_usd":0.99,"limit_usd":1.00}' | \
   python plugins/deep-research-skill/skills/deep-research-skill/hooks/budget_guard.py
-# -> exit code 2, {"action": "block", ...}
 
-# Тест budget_guard — в рамках бюджета (ожидается exit 0):
-echo '{"tool":"firecrawl","spent_usd":0.50,"limit_usd":1.00}' | \
-  python plugins/deep-research-skill/skills/deep-research-skill/hooks/budget_guard.py
-# -> exit code 0, {"action": "approve", ...}
-
-# Запуск через CLI engine:
-python -m engine hook --op test \
-  --script plugins/deep-research-skill/skills/deep-research-skill/hooks/budget_guard.py \
-  --payload '{"tool":"browserbase","spent_usd":0.99,"limit_usd":1.00}'
+# Cost-отчёт через CLI:
+echo '{"total_budget":1.0,"spends":[{"gate":"gate_3_analysis","amount":0.3}]}' | \
+  python -m engine cost
 ```
 
 ---
