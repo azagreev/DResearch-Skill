@@ -2,7 +2,7 @@
 
 ## Deep Research Skill | Multi-Agent Orchestration Layer
 
-> **Version:** 1.2.0
+> **Version:** 1.3.0
 > **Scope:** Heartbeat, checkpoints, quality gates, cost tracking, error recovery, multi-agent coordination
 > **Philosophy:** *Every agent reports, every gate validates, every failure recovers*
 > **Status:** Testing release
@@ -353,17 +353,32 @@ fallback:
 
 ### 3.1 Gate Architecture
 
+**Enforcement status (authoritative — reflects actual engine code in `engine/state.py`):**
+
+Of the 5 prose-documented gates, exactly **2 are HARD-ENFORCED in code** by `state.gate_blocks_transition`; the other 3 are advisory (checked only in prose / heartbeat metrics, not by the engine):
+
+| Gate | Prose name | Code-enforced? | Enforcement rule |
+|------|-----------|----------------|-----------------|
+| Gate 1 | Post-Collect | **YES** | `sources_screened > 0` required for `target_phase >= 2`. Blocks transition if snapshot has no screened sources. |
+| Gate 2 | Post-Process | advisory only | Not checked by `gate_blocks_transition`; validated by prose + heartbeat metrics. |
+| Gate 3 | Post-Analysis | advisory only | Not checked by `gate_blocks_transition`; validated by prose + heartbeat metrics. |
+| Gate 4 | Post-Synthesis | advisory only | Not checked by `gate_blocks_transition`; validated by prose + heartbeat metrics. |
+| Gate 5 | Final Output | **YES** | `citations_verified == True` required for `target_phase >= 5`. Blocks synthesis/output if no claim has been verified. |
+
+`engine gate` CLI verb exposes all three oracles in one call: `blocks_transition` (from `gate_blocks_transition`), `should_stop` (budget/done/stalled), and `should_compact` (named compaction boundary). `run_pipeline` consults `gate_blocks_transition` automatically using `next_phase` (not a hardcoded phase number) when assembling the snapshot.
+
 ```
 Gate 1 (Post-Collect)    Gate 2 (Post-Process)   Gate 3 (Post-Analyze)   Gate 4 (Post-Synth)    Gate 5 (Final Output)
     │                          │                        │                      │                       │
     ▼                          ▼                        ▼                      ▼                       ▼
  Raw Data ──▶            Clean Data ──▶           Insights ──▶         Conclusions ──▶        Deliverable
  CHECK:                     CHECK:                   CHECK:                 CHECK:                  CHECK:
- - sources ≥ N             - dedup < 5%            - 100% P0 Qs          - 100% claims          - CI ≥ 70
- - diversity ≥ 4 types     - quality ≥ 8/10          answered               sourced               - all citations
- - tier ≥ 60% B+           - 0 PII leaks           - findings ≥ 3         - all scored            present
+ - sources ≥ N [CODE]      - dedup < 5%            - 100% P0 Qs          - 100% claims          - CI ≥ 70
+ - diversity ≥ 4 types     - quality ≥ 8/10          answered               sourced              - all citations
+ - tier ≥ 60% B+           - 0 PII leaks           - findings ≥ 3         - all scored             present [CODE]
  - freshness ≥ 60%         - losses < 10%            data points          - ≥ 2 alternatives      - format compliant
  - 0 blocking errors       - formats normalized      - stats checked        - 0 contradictions      - exec summary OK
+[CODE] = hard-enforced by state.gate_blocks_transition; others are advisory prose checks.
 ```
 
 ### 3.2 Log Format для каждого gate
@@ -1399,7 +1414,7 @@ for recovery — the heartbeat is only a hint.
 
 ```json
 {
-  "checkpoint_version": "1.2",
+  "checkpoint_version": "1.3",
   "run_id": "whoop-cdek-20260607-b7e2",
   "created_utc": "2026-06-07T10:02:40Z",
   "task_fingerprint": "<sha1(normalize(question|route|depth|scope))>",
@@ -1407,7 +1422,7 @@ for recovery — the heartbeat is only a hint.
   "sources_screened": 12,
   "extraction_table_complete": true,
   "citations_verified": false,
-  "last_gate": {"id": "G1", "verdict": "PASS"},
+  "last_gate": {"id": "G1", "verdict": "PASS", "reason": null},
   "budget": {"limit_usd": 0.20, "spent_usd": 0.0, "loads_used": 4, "loads_cap": 6},
   "task_frame": {"question": "...", "route": "B", "depth": "Standard",
                  "scope": ["cdek.shopping"], "acceptance_criteria": ["..."]},
@@ -1424,14 +1439,26 @@ for recovery — the heartbeat is only a hint.
                   "disqualifiers": []
                 }}],
   "claims":   [{"id": "C1", "text": "...", "category": "verified", "confidence": 4,
-                "sources": ["S1", "S2"], "status": "confirmed"}],
+                "sources": ["S1", "S2"], "status": "confirmed",
+                "metadata": {"disagreement": false, "reverified_category": "verified"}}],
   "open_items": ["cross-check Peak/One on a 2nd same-site listing"],
-  "resume_instruction": "Sources S1-S2 already rendered — do NOT re-fetch; continue at Phase 3 FCA."
+  "resume_instruction": "Sources S1-S2 already rendered — do NOT re-fetch; continue at Phase 3 FCA.",
+  "trace": [
+    {"event": "ingest", "ts": "2026-06-07T10:02:41Z"},
+    {"event": "score", "ts": "2026-06-07T10:02:41Z"},
+    {"event": "factcheck", "ts": "2026-06-07T10:02:42Z"},
+    {"event": "verify", "ts": "2026-06-07T10:02:42Z"},
+    {"event": "cluster", "ts": "2026-06-07T10:02:42Z"},
+    {"event": "build", "ts": "2026-06-07T10:02:42Z"}
+  ]
 }
 ```
 
 **Version notes for §8.0 state block:**
-- `"checkpoint_version": "1.2"` — added in Phase 14. Older checkpoints (1.0, 1.1) migrate automatically: `_scores_from` defaults `breakdown` to `[]` and `disqualifiers` to `[]` when absent; the version field is re-stamped on save.
+- `"checkpoint_version": "1.3"` — current version (Phase 15). Older checkpoints (1.0, 1.1, 1.2) migrate automatically: new fields default gracefully on load; the version field is re-stamped to "1.3" on save.
+- `"last_gate".reason` — added in v1.3. `null` on PASS; a non-null string on WARN/FAIL carries the blocking reason from `gate_blocks_transition`. Required for the `engine gate` verb output.
+- `"claims[].metadata"` — added in v1.3. `run_pipeline` auto-populates `metadata["disagreement"]` (bool: True when `verify.reverify_claim` returns a different category than `claim.category`) and `metadata["reverified_category"]` (the re-derived `ClaimCategory` .value string). An empty dict `{}` means the claim has not yet passed through the auto-verify step.
+- `"trace"` — added in v1.3. `snapshot.trace` is the serialized form of `RunTrace.as_list()`: a list of `{event, ts}` dicts, one appended per pipeline stage by `run_pipeline`. Stages, in order: `ingest`, `score`, `factcheck`, `verify` (new in Phase 15), `cluster`, `build`. An empty list means the snapshot was loaded from a pre-Phase 15 checkpoint or built without `run_pipeline`.
 - `sources[].scores.breakdown` — list of `[label, contribution]` pairs (contributions sum to `composite`). Present after Phase 3 scoring; empty `[]` before.
 - `sources[].scores.disqualifiers` — sorted list of veto reasons (e.g. `["domain:spamblog.example"]`). Empty when not vetoed. A non-empty list means `composite` was forced to 0 and `tier` to D regardless of component values.
 
@@ -1643,7 +1670,111 @@ Because `published_at` is reliably present, ingest assigns `date_confidence = "h
 
 ---
 
-## 10. Appendices
+## 10. Phase 15: Integration & Reachability
+
+### 10.1 Root-Cause Invariant Table
+
+The table below documents the invariants the engine enforces to prevent recurring integration failures. Each invariant has a short name, a description, and the test or mechanism that enforces it.
+
+| # | Invariant | Description | Enforced by |
+|---|-----------|-------------|-------------|
+| 1 | fingerprint guard | A resumed snapshot must match the current task fingerprint; mismatch → fresh run dir, no clobber. | `state.resume_or_fresh`, `test_phase1_state.py` |
+| 2 | budget carry-forward | `spent_usd` and `loads_used` are never reset on resume. | `state.resume_or_fresh`, carry-forward logic |
+| 3 | sources read-only on resume | Collected sources with `status rendered/done` are served from `state`, not re-fetched. | `state.assert_sources_readonly`, `test_phase1_state.py` |
+| 4 | citations_verified gate | `target_phase >= 5` (synthesis/output) is blocked until `citations_verified == True`. | `state.gate_blocks_transition`, gate enforcement tests |
+| 5 | sources_screened gate | `target_phase >= 2` (processing) is blocked when `sources_screened == 0`. | `state.gate_blocks_transition`, gate enforcement tests |
+| 6 | trust fence | Retrieved web content is UNTRUSTED data; embedded instructions are ignored. Enforced at `ingest.source_from_raw` via `TrustLevel`. | `engine/ingest.py`, `test_phase8.py` |
+| 7 | veto is absolute | A vetoed source cannot be promoted by composite arithmetic: `composite = 0.0`, `tier = D`. | `score.disqualify`, `test_phase14.py` |
+| 8 | rescore is idempotent | A second rescore over the same snapshot + rules yields an empty diff; cached components are not zeroed before re-scoring. | `state.rescore_snapshot`, `test_phase14.py` |
+| **9** | **built but unreachable = dead integration** | **Every curated capability MUST have a CLI subparser-choice AND be exercised end-to-end. A capability that passes unit tests but has no CLI verb and/or is never called in `run_pipeline` is treated as unintegrated and does not count toward the acceptance bar.** | **`tests/test_phase15_reachability.py`** — asserts that each of `verify`, `plan`, `gate` appears in `cli.build_parser()` choices, and that `run_pipeline` calls the verify step and populates `snapshot.trace` and `claim.metadata["disagreement"]` / `["reverified_category"]`. |
+
+> **Why invariant #9 matters:** Phase 15 root-causes the pattern where capabilities are fully unit-tested (green) but silently dormant in production because neither the CLI nor `run_pipeline` ever invokes them. The acceptance bar shifts from "unit-test passes" to "reachable end-to-end": a CLI subparser entry-point PLUS a call site in `run_pipeline` (or explicit delegation from `engine run`).
+
+### 10.2 Phase 15 CLI Verbs
+
+Three verbs become reachable for the first time in Phase 15:
+
+#### `verify`
+
+```
+python -m engine verify --input {snapshot, now?}
+```
+
+JSON-in: `{snapshot: <Snapshot dict>, now?: ISO8601}` (or `{snapshot, subtasks}` for a subtask-scoped call).
+
+JSON-out:
+```json
+{
+  "results": [
+    {
+      "claim_id": "C1",
+      "original_category": "verified",
+      "reverified_category": "verified",
+      "disagreement": false
+    }
+  ],
+  "summary": {"n_claims": 1, "n_disagreements": 0}
+}
+```
+
+`verify` calls `verify.reverify_claim` for each claim in the snapshot WITHOUT passing `model_categories` or reading `verdict_explanation`, so the re-derived category reflects the evidence alone. A disagreement (`original_category != reverified_category`) means the recorded verdict diverges from the evidence-supported verdict. Pure, deterministic, no mutation of the snapshot.
+
+#### `plan`
+
+```
+python -m engine plan --input {snapshot} | {subtasks}
+```
+
+JSON-in: `{snapshot: <Snapshot dict>}` (subtasks are taken from `snapshot.subtasks`) OR `{subtasks: [...]}` directly.
+
+JSON-out:
+```json
+{
+  "status": "valid",
+  "errors": [],
+  "layers": [["ST-1"], ["ST-2", "ST-3"]],
+  "ready": ["ST-2", "ST-3"],
+  "max_concurrent": 5
+}
+```
+
+`plan` calls `plan.validate_plan` (reports unknown deps and non-FEEDBACK cycles), `plan.topo_order` (Kahn-style parallel layering, max 5 per level), and `plan.ready_set` (PENDING subtasks whose every STRICT predecessor is DONE). `status` is `"invalid"` when `errors` is non-empty.
+
+#### `gate`
+
+```
+python -m engine gate --input {snapshot, target_phase?}
+```
+
+JSON-in: `{snapshot: <Snapshot dict>, target_phase?: int}` (defaults to `snapshot.next_phase`).
+
+JSON-out:
+```json
+{
+  "blocks_transition": null,
+  "should_stop": null,
+  "should_compact": null
+}
+```
+
+Each key is `null` when the check passes. Non-null values:
+- `blocks_transition`: reason string from `state.gate_blocks_transition` (e.g. `"gate blocked: target_phase 5 requires citations_verified True, but citations_verified is False"`).
+- `should_stop`: reason token from `state.should_stop` (`"budget_exhausted"` | `"done_condition_met"` | `"stalled_uncertainty"`).
+- `should_compact`: boundary name from `compact.should_compact` (`"post_collection"` | `"pre_synthesis"` | `"pre_report"`).
+
+### 10.3 run_pipeline Phase 15 additions
+
+`pipeline.run_pipeline` is extended in Phase 15 with two new behaviors:
+
+**Auto-verify step.** After `factcheck.factcheck_claims` and before `cluster_claims`, `run_pipeline` calls `verify.reverify_claim` for each claim and stamps:
+- `claim.metadata["disagreement"]` — `True` if the re-derived category differs from `claim.category`, `False` otherwise.
+- `claim.metadata["reverified_category"]` — the re-derived `ClaimCategory` .value string (e.g. `"verified"`).
+
+**Trace population.** `run_pipeline` creates a `RunTrace` instance and appends one `{event, ts}` dict per stage, in order: `ingest`, `score`, `factcheck`, `verify`, `cluster`, `build` (`ts` is the passed-in `now_utc`, never a clock read). At the end, `snapshot.trace = trace.as_list()` serializes the run log into the snapshot for checkpoint persistence and `engine gate`/`engine report` inspection.
+
+**Gate consultation.** The `next_phase` passed to `build_snapshot` is no longer hardcoded to `5`; it is determined by `state.gate_blocks_transition(snapshot, candidate_phase)` consulting the actual snapshot signals. This means the pipeline correctly reflects the blocked/unblocked state of the transition rather than always writing phase 5.
+
+## 11. Appendices
 
 ### Appendix A: Quick Reference Card
 

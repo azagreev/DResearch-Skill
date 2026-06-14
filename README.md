@@ -2,7 +2,7 @@
 
 > **Навык глубокого исследования для Claude Code (testing release).** Многофазный workflow с cost-first выполнением, evidence-based отчётами, anti-hallucination протоколом и прозрачным confidence scoring.
 
-**Версия:** 1.2.0 | **Лицензия:** MIT | **Язык:** русский
+**Версия:** 1.3.0 | **Лицензия:** MIT | **Язык:** русский
 **Автор:** Andrey Zagreev | **Обратная связь:** [@zagreev](https://t.me/zagreev)
 
 ---
@@ -141,7 +141,7 @@ DResearch-Skill/                              # маркетплейс (коре
 ├── plugins/
 │   └── deep-research-skill/
 │       ├── .claude-plugin/
-│       │   └── plugin.json                   # манифест плагина (version: 1.2.0)
+│       │   └── plugin.json                   # манифест плагина (version: 1.3.0)
 │       └── skills/
 │           └── deep-research-skill/          # self-contained навык
 │               ├── SKILL.md                  # точка входа (7-фазный workflow)
@@ -181,7 +181,10 @@ ingest       — raw → Source[]
 rank         — ранжирование источников
 score        — scoring источников (+ veto-слой и score-breakdown, v1.2.0)
 factcheck    — верификация claims
+verify       — независимая ре-деривация категорий (disagreement-флаг)  # новое v1.3.0
 cluster      — кластеризация
+plan         — валидация DAG / topo-порядок / ready-set  # новое v1.3.0
+gate         — статус gate-сигналов (blocks_transition/should_stop/should_compact)  # новое v1.3.0
 memory       — сессионная память (+ record-feedback/list-feedback, v1.2.0)
 eval         — IR-метрики + cost_efficiency
 cost         — per-gate cost-отчёт через GateCostTracker  # новое v1.1.0
@@ -326,5 +329,5 @@ MIT License — см. [LICENSE](LICENSE).
 ---
 
 <p align="center">
-  <b>Deep Research Skill v1.2.0</b> · Автор: Andrey Zagreev · <a href="https://t.me/zagreev">@zagreev</a>
+  <b>Deep Research Skill v1.3.0</b> · Автор: Andrey Zagreev · <a href="https://t.me/zagreev">@zagreev</a>
 </p>

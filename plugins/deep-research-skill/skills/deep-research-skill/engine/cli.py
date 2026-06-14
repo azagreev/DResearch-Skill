@@ -54,6 +54,10 @@ def _report_mode(name: str):
 # --------------------------------------------------------------------------- #
 def _cmd_doctor(_args: argparse.Namespace) -> int:
     diag = runtime.diagnostics()
+    # AC15-6: surface the capability->verb reachability manifest alongside the
+    # existing runtime diagnostics, so an operator can see at a glance whether
+    # any curated capability lacks a CLI verb (reachable=False).
+    diag["capabilities"] = _capability_manifest()
     _emit_json(diag)
     return 0 if diag["python_ok"] else 1
 
@@ -419,6 +423,143 @@ def _cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_verify(args: argparse.Namespace) -> int:
+    """AC15-2 — independent re-verification of a snapshot's claims.
+
+    JSON-in {snapshot, now?}. For each claim we re-derive its category from
+    claim text + the snapshot's sources (verify.reverify_claim, which never
+    reads claim.verdict_explanation) and flag disagreement with the recorded
+    category. The input snapshot/claims are NOT mutated — reverify/disagreement
+    are read-only on the claim.
+    """
+    from .model import snapshot_from_dict
+    from .verify import disagreement, reverify_claim
+
+    data = _read_input(args.input)
+    snapshot = snapshot_from_dict(data["snapshot"])
+    now = data.get("now")
+    results = []
+    n_disagreements = 0
+    for claim in snapshot.claims:
+        reverified = reverify_claim(claim, snapshot.sources, now)
+        dis = disagreement(claim, snapshot.sources, now)
+        if dis:
+            n_disagreements += 1
+        results.append({
+            "claim_id": claim.id,
+            "original_category": claim.category.value,
+            "reverified_category": reverified.value,
+            "disagreement": dis,
+        })
+    _emit_json({
+        "results": results,
+        "summary": {"n_claims": len(results), "n_disagreements": n_disagreements},
+    })
+    return 0
+
+
+def _cmd_plan(args: argparse.Namespace) -> int:
+    """AC15-3 — validate + layer a sub-task DAG.
+
+    JSON-in either {snapshot} (reads snapshot.subtasks) or {subtasks} (a list of
+    subtask dicts). Reports validation errors; on a valid plan, the parallel
+    layering, the STRICT-ready set, and MAX_CONCURRENT.
+    """
+    from .model import _subtask_from, snapshot_from_dict
+    from .plan import MAX_CONCURRENT, ready_set, topo_order, validate_plan
+
+    data = _read_input(args.input)
+    if "snapshot" in data:
+        subtasks = snapshot_from_dict(data["snapshot"]).subtasks
+    else:
+        subtasks = [_subtask_from(s) for s in data.get("subtasks", [])]
+
+    errors = validate_plan(subtasks)
+    if errors:
+        _emit_json({"status": "invalid", "errors": errors})
+        return 0
+    _emit_json({
+        "status": "valid",
+        "errors": [],
+        "layers": topo_order(subtasks),
+        "ready": ready_set(subtasks),
+        "max_concurrent": MAX_CONCURRENT,
+    })
+    return 0
+
+
+def _cmd_gate(args: argparse.Namespace) -> int:
+    """AC15-4 — consult the three gate oracles for a snapshot.
+
+    JSON-in {snapshot, target_phase?}. Emits whether a phase transition is
+    blocked (state.gate_blocks_transition), whether the run should stop
+    (state.should_stop), and whether a compaction boundary is due
+    (compact.should_compact). target_phase defaults to snapshot.next_phase or 5.
+    """
+    from . import compact
+    from .model import snapshot_from_dict
+    from .state import gate_blocks_transition, should_stop
+
+    data = _read_input(args.input)
+    snapshot = snapshot_from_dict(data["snapshot"])
+    target = data.get("target_phase", snapshot.next_phase or 5)
+    _emit_json({
+        "blocks_transition": gate_blocks_transition(snapshot, int(target)),
+        "should_stop": should_stop(snapshot),
+        "should_compact": compact.should_compact(snapshot),
+    })
+    return 0
+
+
+# --------------------------------------------------------------------------- #
+# Capability reachability manifest (AC15-6 / AC15-7)
+# --------------------------------------------------------------------------- #
+# Curated map of engine capability -> the CLI verb that makes it reachable.
+# `doctor` and the reachability test both consult this single source of truth:
+# a capability is reachable iff its verb is a registered subparser choice.
+CAPABILITY_VERBS: dict = {
+    "collect": "collect",
+    "ingest": "ingest",
+    "rank": "rank",
+    "score": "score",
+    "factcheck": "factcheck",
+    "cluster": "cluster",
+    "memory": "memory",
+    "eval": "eval",
+    "cost": "cost",
+    "compact": "compact",
+    "checkpoint": "checkpoint",
+    "resume": "resume",
+    "rescore": "rescore",
+    "report": "report",
+    "run": "run",
+    "doctor": "doctor",
+    "hook": "hook",
+    "verify": "verify",
+    "plan": "plan",
+    "gate": "gate",
+}
+
+
+def _registered_subcommands() -> set:
+    """The set of subparser choices on the freshly-built parser."""
+    parser = build_parser()
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            return set(action.choices)
+    return set()
+
+
+def _capability_manifest() -> list:
+    """Build the doctor `capabilities` list from CAPABILITY_VERBS vs the actually
+    registered subparser choices. reachable=True iff the verb exists."""
+    registered = _registered_subcommands()
+    return [
+        {"capability": cap, "verb": verb, "reachable": verb in registered}
+        for cap, verb in sorted(CAPABILITY_VERBS.items())
+    ]
+
+
 # --------------------------------------------------------------------------- #
 # Parser
 # --------------------------------------------------------------------------- #
@@ -514,6 +655,18 @@ def build_parser() -> argparse.ArgumentParser:
     compact = sub.add_parser("compact", help="snapshot JSON -> compact handoff dict (JSON)")
     _add_input(compact)
     compact.set_defaults(func=_cmd_compact)
+
+    verify = sub.add_parser("verify", help="independent re-verification of a snapshot's claims (disagreement report)")
+    _add_input(verify)
+    verify.set_defaults(func=_cmd_verify)
+
+    plan = sub.add_parser("plan", help="validate + layer a sub-task DAG (status/errors/layers/ready)")
+    _add_input(plan)
+    plan.set_defaults(func=_cmd_plan)
+
+    gate = sub.add_parser("gate", help="gate oracles: blocks_transition / should_stop / should_compact")
+    _add_input(gate)
+    gate.set_defaults(func=_cmd_gate)
 
     hook = sub.add_parser(
         "hook",

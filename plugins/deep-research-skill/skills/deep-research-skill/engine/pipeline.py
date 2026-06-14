@@ -10,11 +10,21 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from . import factcheck, score
+from . import factcheck, score, state, verify
 from .cluster import cluster_claims
 from .ingest import ingest_sources
-from .model import Claim, ClaimCategory, EvidenceCluster, Snapshot, Source, TaskFrame
+from .model import (
+    Claim,
+    ClaimCategory,
+    EvidenceCluster,
+    GateResult,
+    GateVerdict,
+    Snapshot,
+    Source,
+    TaskFrame,
+)
 from .state import compute_fingerprint
+from .telemetry import RunTrace
 
 
 def reconcile_merges(claims: List[Claim], merges: List[Tuple[str, str]]) -> List[Claim]:
@@ -82,21 +92,62 @@ def run_pipeline(
     fetched_via, and metadata, which is exactly what ingest.source_from_raw
     consumes.  No adapter is needed.
     """
+    # AC15-5: deterministic per-stage run trace. ts is always now_utc (no clock).
+    trace = RunTrace()
+
     sources, merges = ingest_sources(raw_sources, now_utc, dedupe=dedupe)
     reconcile_merges(claims, merges)
+    trace.append("ingest", ts=now_utc)
+
     score.score_sources(sources, now_utc)
     score.score_claims(claims, sources)
-    factcheck.factcheck_claims(claims, sources, now_utc, model_categories=model_categories)
-    clusters = cluster_claims(claims)
-    snapshot = build_snapshot(run_id, task_frame, sources, claims, clusters, now_utc, next_phase=5)
+    trace.append("score", ts=now_utc)
 
-    # Gate signal fields (AC10-6)
+    factcheck.factcheck_claims(claims, sources, now_utc, model_categories=model_categories)
+    trace.append("factcheck", ts=now_utc)
+
+    # AC15-5 auto-verify: independently re-derive each claim's category from the
+    # evidence (verify ignores verdict_explanation — independence preserved) and
+    # record the result + disagreement flag on the claim's metadata. Done AFTER
+    # factcheck so claim.category reflects the finalized verdict being checked.
+    for claim in claims:
+        claim.metadata["disagreement"] = verify.disagreement(claim, sources, now_utc)
+        claim.metadata["reverified_category"] = verify.reverify_claim(
+            claim, sources, now_utc
+        ).value
+    trace.append("verify", ts=now_utc)
+
+    clusters = cluster_claims(claims)
+    trace.append("cluster", ts=now_utc)
+
+    snapshot = build_snapshot(run_id, task_frame, sources, claims, clusters, now_utc)
+    trace.append("build", ts=now_utc)
+    snapshot.trace = trace.as_list()
+
+    # Gate signal fields (AC10-6) — MUST be set BEFORE consulting the gate, since
+    # gate_blocks_transition reads sources_screened / citations_verified.
     snapshot.sources_screened = len(sources)
     # citations_verified: every claim has at least one supporting source
     snapshot.citations_verified = bool(claims) and all(len(c.sources) >= 1 for c in claims)
     # extraction_table_complete: every source has a non-empty extract dict
     snapshot.extraction_table_complete = (
         all(bool(s.extract) for s in sources) if sources else False
+    )
+
+    # AC15-5 gate-consult next_phase (replaces the hardcoded 5): the highest
+    # target phase in 1..5 the gate does not block. A clean run reaches 5;
+    # citations_verified False caps it at 4; sources_screened 0 caps it at 1.
+    next_phase = max(
+        (p for p in range(1, 6) if state.gate_blocks_transition(snapshot, p) is None),
+        default=0,
+    )
+    snapshot.next_phase = next_phase
+
+    blocked_at_5 = state.gate_blocks_transition(snapshot, 5)
+    snapshot.last_gate = GateResult(
+        id="gate_transition",
+        verdict=GateVerdict.PASS if blocked_at_5 is None else GateVerdict.FAIL,
+        reason=blocked_at_5,
     )
 
     return snapshot, merges

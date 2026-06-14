@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-06-14
+
+Phase 15 «Integration & Reachability» — закрывает системный долг, вскрытый пост-v1.2.0 аудитом: половина
+заявленных «сильных сторон» была **построена, но недостижима** (модуль есть и юнит-зелёный, но в `run_pipeline`
+не зовётся и/или нет CLI-verb). Корневая причина — тот же класс, что README-дрейф и AGENT.MD §9-mismatch:
+**AC проверял деталь модуля, а не его интеграцию/достижимость.** Новый разряд приёмки: **достижимо end-to-end,
+а не только зелёный юнит-тест.** 353 теста (было 327), 0 skipped. `CHECKPOINT_VERSION 1.2→1.3` (миграция graceful).
+
+### Added (Phase 15)
+- **CLI-verb `verify`** — независимая ре-деривация категорий утверждений (`verify.reverify_claim`/`disagreement`,
+  было сиротой без verb'а): JSON-in `{snapshot, now?}` → `{results:[{claim_id, original_category,
+  reverified_category, disagreement}], summary:{n_claims, n_disagreements}}`. Независимость сохранена — не читает
+  `verdict_explanation`, не принимает `model_categories`.
+- **CLI-verb `plan`** — валидатор DAG (было сиротой): `{snapshot}|{subtasks}` → `{status, errors, layers,
+  ready, max_concurrent}` через `validate_plan`/`topo_order`/`ready_set` (уровни ≤ `MAX_CONCURRENT=5`).
+- **CLI-verb `gate`** — статус gate-оракулов: `{snapshot, target_phase?}` → `{blocks_transition, should_stop,
+  should_compact}` (раньше `gate_blocks_transition`/`should_stop`/`should_compact` имели ноль не-тестовых вызовов).
+- **`run_pipeline` wiring** — подключены ранее-сиротские способности к каноническому потоку: (a) **auto-trace** —
+  `snapshot.trace` наполняется событием на стадию (`ingest`/`score`/`factcheck`/`verify`/`cluster`/`build`,
+  каждое `{event, ts=now_utc}`); (b) **gate-consult `next_phase`** — конец хардкоду `next_phase=5`: теперь
+  максимальная фаза, не заблокированная `gate_blocks_transition`; `last_gate.reason` проставляется; (c)
+  **auto-verify** — на каждый claim `metadata["disagreement"]`/`["reverified_category"]`.
+- **doctor reachability-манифест** — `capabilities: [{capability, verb, reachable}]` по курируемому реестру
+  (20 способностей); любая без verb'а всплывает как `reachable:false`.
+- **Доки** — `SKILL.md` verb-карта фаз (Phase 1→`plan`, Phase 3→`verify`, gate→`gate`); `AGENT.MD` §3.1 какие
+  гейты реально энфорсятся (2 из 5) vs адвайзори, §8 state-блок с `trace`/`metadata`/`reason` (v1.3), §10
+  invariant #9 «built but unreachable».
+- `tests/test_phase15_reachability.py` (10) + `test_phase15_verbs.py` (9) + `test_phase15_pipeline.py` (7) —
+  non-vacuous: reachability-тест **падает на сироте** (доказано мутацией парсера), subprocess-smoke verify/plan/gate,
+  e2e `run` несёт trace/gate-consult-`next_phase`/disagreement; детерминизм (run дважды → идентично).
+
+### Migration (Phase 15 freeze)
+- `CHECKPOINT_VERSION "1.2" → "1.3"`; `_migrate` 1.2→1.3 инжектит `trace=[]` (поля `Claim.metadata`/
+  `GateResult.reason` деградируют через `.get`). Чекпойнты v1.0/v1.1/v1.2 грузятся и валидны.
+
+### Technical debt
+- **TD-2 closed** (orphan capabilities) + **invariant #9** «built but unreachable = dead integration» добавлен в
+  `docs/TECHDEBT.md` и AGENT.MD: каждая курируемая способность обязана иметь CLI-subparser-choice И исполняться
+  end-to-end; энфорс — `test_phase15_reachability.py`.
+
 ## [1.2.0] - 2026-06-14
 
 Phase 14 «Explainable & Calibratable Scoring» — приёмы, отобранные из мультиагентного разбора стороннего
