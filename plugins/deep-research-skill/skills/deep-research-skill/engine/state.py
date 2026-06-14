@@ -19,7 +19,7 @@ import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .freshness import parse_iso
 from .model import (
@@ -252,6 +252,94 @@ def assert_sources_readonly(before: Snapshot, after: Snapshot) -> List[str]:
         if src.url != prior.url or src.raw_path != prior.raw_path or src.extract != prior.extract:
             changed.append(src.id)
     return changed
+
+
+# --------------------------------------------------------------------------- #
+# Rescore — full re-derivation of tiers / confidence / verdicts (Phase 14)
+# --------------------------------------------------------------------------- #
+def rescore_snapshot(
+    snapshot: Snapshot,
+    *,
+    now_utc: Optional[str] = None,
+    model_categories: Optional[Dict[str, ClaimCategory]] = None,
+    half_life_days: float = 30.0,
+    shallow: bool = False,
+) -> Tuple[Snapshot, dict, List[str]]:
+    """Re-derive the analysis layer of a snapshot from its *cached* score
+    components, without re-fetching anything. AC14-3.
+
+    A clean deep copy of `snapshot` is produced (via snapshot_to_dict ->
+    snapshot_from_dict, so no aliasing with the input) and then re-run:
+
+      score.score_sources -> score.score_claims
+      (deep only) factcheck.factcheck_claims -> cluster_claims
+
+    CRITICAL — the cached `ScoreComponents` are NOT reset before re-scoring.
+    `score.score_source` seeds the Authority component from `source.tier` only
+    when `authority is None`; a previously-scored source already has its
+    Authority filled, so leaving the cache intact recomputes composite/tier from
+    the SAME component values and the operation is idempotent. Zeroing the cache
+    would instead re-seed Authority from the tier the *previous* pass overwrote,
+    breaking idempotency.
+
+    The source payload (url / raw_path / extract) is never touched; this is
+    enforced by assert_sources_readonly(before, after), whose changed-id list is
+    returned as the third tuple element (empty == read-only invariant held).
+
+    Returns (after_snapshot, diff, changed_source_ids). `diff` has shape:
+      {"sources": [{"id", "tier_before", "tier_after"}, ...],
+       "claims":  [{"id", "confidence_before", "confidence_after",
+                    "category_before", "category_after"}, ...]}
+    `now_utc` is passed in — the engine never reads a clock. Pure aside from the
+    deep-copy allocation.
+    """
+    from . import factcheck, score
+    from .cluster import cluster_claims
+
+    # Snapshot the "before" tiers/verdicts for the diff, taken from the input.
+    src_before = {s.id: (s.tier.value if s.tier is not None else None) for s in snapshot.sources}
+    claim_before = {
+        c.id: (c.confidence, c.category.value if c.category is not None else None)
+        for c in snapshot.claims
+    }
+
+    # Clean working copy — fully detached from the caller's objects.
+    after = snapshot_from_dict(snapshot_to_dict(snapshot))
+
+    # Re-derive: sources (composite/tier from cached components) then claim base
+    # confidence from the freshly-assigned tiers.
+    score.score_sources(after.sources, now_utc, half_life_days)
+    score.score_claims(after.claims, after.sources)
+
+    if not shallow:
+        hints = model_categories or {}
+        factcheck.factcheck_claims(after.claims, after.sources, now_utc, model_categories=hints)
+        after.clusters = cluster_claims(after.claims)
+
+    # Build the diff against the captured "before" state.
+    source_diff = []
+    for src in after.sources:
+        tier_after = src.tier.value if src.tier is not None else None
+        source_diff.append({
+            "id": src.id,
+            "tier_before": src_before.get(src.id),
+            "tier_after": tier_after,
+        })
+    claim_diff = []
+    for claim in after.claims:
+        conf_before, cat_before = claim_before.get(claim.id, (None, None))
+        claim_diff.append({
+            "id": claim.id,
+            "confidence_before": conf_before,
+            "confidence_after": claim.confidence,
+            "category_before": cat_before,
+            "category_after": claim.category.value if claim.category is not None else None,
+        })
+    diff = {"sources": source_diff, "claims": claim_diff}
+
+    # Enforce the read-only invariant over the source payload.
+    changed = assert_sources_readonly(snapshot, after)
+    return after, diff, changed
 
 
 # --------------------------------------------------------------------------- #

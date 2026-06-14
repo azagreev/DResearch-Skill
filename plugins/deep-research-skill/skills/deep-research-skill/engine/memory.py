@@ -12,6 +12,7 @@ otherwise search falls back to LIKE. Python >= 3.10.
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -44,8 +45,20 @@ CREATE TABLE IF NOT EXISTS claims (
   last_seen      TEXT,
   sighting_count INTEGER DEFAULT 1
 );
+CREATE TABLE IF NOT EXISTS feedback (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id        TEXT,
+  item_id       TEXT,
+  kind          TEXT,
+  engine_value  TEXT,
+  human_value   TEXT,
+  trace_json    TEXT,
+  recorded_utc  TEXT
+);
 CREATE INDEX IF NOT EXISTS idx_sources_tier ON sources(tier);
 CREATE INDEX IF NOT EXISTS idx_claims_category ON claims(category);
+CREATE INDEX IF NOT EXISTS idx_feedback_kind ON feedback(kind);
+CREATE INDEX IF NOT EXISTS idx_feedback_run ON feedback(run_id);
 """
 
 
@@ -176,8 +189,73 @@ def search_claims(conn: sqlite3.Connection, query: str, limit: int = 10) -> List
     return [dict(row) for row in rows]
 
 
+# --------------------------------------------------------------------------- #
+# Feedback ledger — append-only human-vs-engine calibration record (AC14-4)
+# --------------------------------------------------------------------------- #
+# This is a HUMAN-REVIEWED calibration dataset, NOT an input to scoring. The
+# scoring path (score.py / factcheck.py) must never read from `feedback`; the
+# presence of rows here must not change any score, tier, or verdict the engine
+# produces. It is consumed only by offline retro/analysis.
+def record_feedback(conn: sqlite3.Connection, record: dict, now_utc: str) -> Dict[str, Any]:
+    """Append one feedback row. APPEND-ONLY: always INSERT, never UPDATE — two
+    records with the same item_id produce two distinct rows (a full review
+    history is kept). `now_utc` is passed in (ISO); the engine reads no clock.
+    `trace_json` is stored verbatim if a string, else JSON-encoded.
+
+    Returns {"id": <new rowid>} for the inserted row.
+    """
+    trace = record.get("trace_json")
+    if trace is not None and not isinstance(trace, str):
+        trace = json.dumps(trace, ensure_ascii=False)
+    cur = conn.execute(
+        "INSERT INTO feedback(run_id, item_id, kind, engine_value, human_value, trace_json, recorded_utc) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (
+            record.get("run_id"),
+            record.get("item_id"),
+            record.get("kind"),
+            record.get("engine_value"),
+            record.get("human_value"),
+            trace,
+            now_utc,
+        ),
+    )
+    conn.commit()
+    return {"id": cur.lastrowid}
+
+
+def list_feedback(
+    conn: sqlite3.Connection,
+    *,
+    kind: Optional[str] = None,
+    run_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Return feedback rows (oldest first by insertion order / rowid), optionally
+    filtered by `kind` and/or `run_id`. Read-only.
+    """
+    where: List[str] = []
+    params: List[Any] = []
+    if kind is not None:
+        where.append("kind=?")
+        params.append(kind)
+    if run_id is not None:
+        where.append("run_id=?")
+        params.append(run_id)
+    sql = "SELECT * FROM feedback"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY id"
+    rows = conn.execute(sql, params).fetchall()
+    return [dict(row) for row in rows]
+
+
 def get_stats(conn: sqlite3.Connection) -> Dict[str, int]:
     def count(table: str) -> int:
         return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 
-    return {"runs": count("runs"), "sources": count("sources"), "claims": count("claims")}
+    return {
+        "runs": count("runs"),
+        "sources": count("sources"),
+        "claims": count("claims"),
+        "feedback": count("feedback"),
+    }

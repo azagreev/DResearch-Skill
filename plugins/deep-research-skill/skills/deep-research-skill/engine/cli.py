@@ -156,8 +156,64 @@ def _cmd_memory(args: argparse.Namespace) -> int:
         _emit_json(memory.record_run(conn, snapshot, args.now or ""))
     elif args.op == "search":
         _emit_json({"results": memory.search_claims(conn, args.query or "", args.limit)})
+    elif args.op == "record-feedback":
+        # JSON-in: a single feedback record (or {"record": {...}}).
+        data = _read_input(args.input)
+        record = data.get("record", data)
+        _emit_json(memory.record_feedback(conn, record, args.now or ""))
+    elif args.op == "list-feedback":
+        kind = getattr(args, "kind", None)
+        run_id = getattr(args, "run_id", None)
+        _emit_json({"feedback": memory.list_feedback(conn, kind=kind, run_id=run_id)})
     else:  # stats
         _emit_json(memory.get_stats(conn))
+    return 0
+
+
+def _cmd_rescore(args: argparse.Namespace) -> int:
+    from . import report as report_mod
+    from .model import ClaimCategory, snapshot_from_dict, snapshot_to_dict
+    from .state import rescore_snapshot
+
+    data = _read_input(args.input)
+    snapshot = snapshot_from_dict(data["snapshot"])
+    hints = {k: ClaimCategory(v) for k, v in (data.get("model_categories") or {}).items()}
+    after, diff, changed = rescore_snapshot(
+        snapshot,
+        now_utc=data.get("now"),
+        model_categories=hints,
+        half_life_days=float(data.get("half_life_days", 30.0)),
+        shallow=bool(getattr(args, "shallow", False)),
+    )
+    if changed:
+        _emit_json({
+            "error": "rescore mutated read-only source payload(s); aborting",
+            "changed_ids": changed,
+        })
+        return 1
+
+    out = {
+        "snapshot": snapshot_to_dict(after),
+        "diff": diff,
+        "readonly_ok": True,
+    }
+    if getattr(args, "shallow", False):
+        out["warning"] = (
+            "shallow rescore: factcheck + clustering were skipped, so claim "
+            "categories/verdicts may be stale relative to the new tiers"
+        )
+    if getattr(args, "out", None):
+        with open(args.out, "w", encoding="utf-8") as handle:
+            json.dump(snapshot_to_dict(after), handle, ensure_ascii=False, indent=2)
+    if getattr(args, "report", False):
+        md = report_mod.render_markdown(after, _report_mode(args.mode))
+        # Carry the shallow-staleness warning onto the Markdown path too, so it is
+        # not silently dropped when --shallow is combined with --report.
+        if out.get("warning"):
+            md = f"> ⚠️ {out['warning']}\n\n{md}"
+        _emit(md)
+    else:
+        _emit_json(out)
     return 0
 
 
@@ -415,11 +471,25 @@ def build_parser() -> argparse.ArgumentParser:
     memory = sub.add_parser("memory", help="cross-run SQLite store")
     _add_input(memory)
     memory.add_argument("--db", default=None, help="SQLite path (omit -> in-memory)")
-    memory.add_argument("--op", choices=("record", "search", "stats"), default="stats")
+    memory.add_argument(
+        "--op",
+        choices=("record", "search", "stats", "record-feedback", "list-feedback"),
+        default="stats",
+    )
     memory.add_argument("--query", default=None, help="search query (op=search)")
     memory.add_argument("--limit", type=int, default=10)
     memory.add_argument("--now", default=None)
+    memory.add_argument("--kind", default=None, help="filter feedback by kind (op=list-feedback)")
+    memory.add_argument("--run-id", dest="run_id", default=None, help="filter feedback by run_id (op=list-feedback)")
     memory.set_defaults(func=_cmd_memory)
+
+    rescore = sub.add_parser("rescore", help="re-derive tiers/confidence/verdicts from cached components")
+    _add_input(rescore)
+    rescore.add_argument("--shallow", action="store_true", help="skip factcheck + clustering (verdicts may be stale)")
+    rescore.add_argument("--report", action="store_true", help="render the rescored snapshot as Markdown instead of JSON")
+    rescore.add_argument("--mode", default="findings", help="report mode (with --report): findings|debunk|mixed")
+    rescore.add_argument("--out", default=None, help="also write the rescored snapshot JSON here")
+    rescore.set_defaults(func=_cmd_rescore)
 
     eval_ = sub.add_parser("eval", help="precision@k / nDCG@k / jaccard / coverage")
     _add_input(eval_)

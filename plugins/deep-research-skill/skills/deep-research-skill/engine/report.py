@@ -18,9 +18,34 @@ _CONFIDENCE_EMOJI = {5: "🔵", 4: "🟢", 3: "🟡", 2: "🔴", 1: "⚪"}
 
 _INCLUDED = {Disposition.INCLUDE, Disposition.INCLUDE_WITH_FLAG, Disposition.INCLUDE_AS_CORRECTION}
 
+# Short labels for the inline score breakdown on each source line.
+_BREAKDOWN_ABBR = {
+    "authority": "auth",
+    "recency": "rec",
+    "independence": "indep",
+    "traceability": "trace",
+    "corroboration": "corrob",
+}
+
 
 def confidence_emoji(confidence: int) -> str:
     return _CONFIDENCE_EMOJI.get(max(1, min(5, confidence)), "⚪")
+
+
+def _source_annotation(source: Source) -> str:
+    """Inline annotation for a source line: a veto reason when disqualified,
+    otherwise the compact score breakdown. Deterministic order. Pure formatting.
+    """
+    scores = source.scores
+    if scores.disqualifiers:
+        return " — ⛔ veto: " + ", ".join(scores.disqualifiers)
+    if scores.breakdown:
+        parts = [
+            f"{_BREAKDOWN_ABBR.get(label, label)} {contribution:.2f}"
+            for label, contribution in scores.breakdown
+        ]
+        return " — " + ", ".join(parts)
+    return ""
 
 
 def _flag(claim: Claim) -> str:
@@ -91,7 +116,7 @@ def render_markdown(
         lines.append("## Источники")
         for source in snapshot.sources:
             tier = f" ({source.tier.value})" if source.tier is not None else ""
-            lines.append(f"- [{source.id}]{tier} {source.url}")
+            lines.append(f"- [{source.id}]{tier} {source.url}{_source_annotation(source)}")
         lines.append("")
 
     counts = Counter(disp.values())

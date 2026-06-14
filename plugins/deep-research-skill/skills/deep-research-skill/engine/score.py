@@ -16,7 +16,10 @@ Python >= 3.10.
 
 from __future__ import annotations
 
+import re
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional
+from urllib.parse import urlsplit
 
 from .freshness import recency_score
 from .model import Claim, ScoreComponents, Source, Tier
@@ -27,6 +30,90 @@ W_RECENCY = 0.25
 W_INDEPENDENCE = 0.20
 W_TRACEABILITY = 0.15
 W_CORROBORATION = 0.10
+
+# Breakdown label order — mirrors the composite term order above. Each entry is
+# (label, weight, ScoreComponents attribute) so breakdown and composite share a
+# single source of truth and can never drift apart.
+_BREAKDOWN_TERMS = (
+    ("authority", W_AUTHORITY, "authority"),
+    ("recency", W_RECENCY, "recency"),
+    ("independence", W_INDEPENDENCE, "independence"),
+    ("traceability", W_TRACEABILITY, "traceability"),
+    ("corroboration", W_CORROBORATION, "corroboration"),
+)
+
+
+# --------------------------------------------------------------------------- #
+# Anti-fit veto layer (Phase 14)
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class VetoRules:
+    """Disqualification rules: a source that matches is vetoed to composite=0 / D.
+
+    `domains`  — exact-host match (case-insensitive), e.g. a known content farm.
+    `patterns` — substrings/regexes tested (case-insensitive) against the source's
+                 title + snippet + url; markers like RETRACTED or "sponsored by".
+    An empty VetoRules() disables veto entirely (matches nothing).
+    """
+    domains: frozenset = field(default_factory=frozenset)
+    patterns: tuple = field(default_factory=tuple)
+
+
+# A few representative entries: known content-farm / injection hosts plus
+# integrity / advertorial markers. Substring-matched, case-insensitive.
+DEFAULT_VETO = VetoRules(
+    domains=frozenset({
+        "content-farm.example",
+        "spamblog.example",
+        "ai-generated-news.example",
+    }),
+    patterns=(
+        "retracted",
+        "sponsored by",
+        "this is an advertisement",
+        "ignore previous instructions",
+    ),
+)
+
+
+def _host(url: str) -> str:
+    """Lowercased host of `url` (no port), '' when unparseable."""
+    netloc = urlsplit(url).netloc.lower()
+    if "@" in netloc:
+        netloc = netloc.rsplit("@", 1)[1]
+    if ":" in netloc:
+        netloc = netloc.rsplit(":", 1)[0]
+    return netloc
+
+
+def disqualify(source: Source, rules: VetoRules) -> List[str]:
+    """Return the sorted, de-duplicated veto reasons matched by `source`.
+
+    Pure: no mutation. Empty list = not vetoed. A domain hit reads
+    `domain:<host>`; a pattern hit reads `pattern:<pattern>`. The matched
+    haystack is title + extract snippet + url, lowercased.
+    """
+    reasons: set = set()
+
+    host = _host(source.url)
+    for domain in rules.domains:
+        if host == domain.lower():
+            reasons.add(f"domain:{domain}")
+
+    snippet = source.extract.get("snippet", "") if isinstance(source.extract, dict) else ""
+    haystack = " ".join((source.title or "", str(snippet), source.url or "")).lower()
+    for pat in rules.patterns:
+        lowered = pat.lower()
+        hit = lowered in haystack
+        if not hit:
+            try:
+                hit = re.search(pat, haystack, re.IGNORECASE) is not None
+            except re.error:
+                hit = False
+        if hit:
+            reasons.add(f"pattern:{pat}")
+
+    return sorted(reasons)
 
 # Authority criterion value by initial tier classification (§1.2-1.6 weights).
 _AUTHORITY_COMPONENT: Dict[Tier, float] = {
@@ -78,10 +165,23 @@ def tier_for_score(score: float) -> Tier:
     return Tier.D
 
 
+def _breakdown(components: ScoreComponents) -> List:
+    """The auditable [label, contribution] trace for a scored source.
+
+    contribution = weight * (component value, None -> 0.0), mirroring
+    composite_score's None-handling so sum(contributions) == composite exactly.
+    """
+    return [
+        [label, weight * (getattr(components, attr) or 0.0)]
+        for label, weight, attr in _BREAKDOWN_TERMS
+    ]
+
+
 def score_source(
     source: Source,
     now_utc: Optional[str] = None,
     half_life_days: float = 30.0,
+    veto: Optional[VetoRules] = None,
 ) -> Source:
     """Fill `source.scores.composite` and (re)assign `source.tier` from it.
     MUTATES and returns `source`.
@@ -89,8 +189,22 @@ def score_source(
     If `now_utc` is given and the recency component is not yet set, it is filled
     from freshness.recency_score(source.published_at, now_utc, half_life_days),
     wiring the Phase-2 recency signal into the Phase-3 composite.
+
+    Anti-fit veto (Phase 14): if the source matches `veto` (defaults to
+    DEFAULT_VETO; pass an empty VetoRules() to disable), its composite is forced
+    to 0.0, tier to D, and the matched reasons recorded in scores.disqualifiers —
+    overriding any high authority tier. A non-vetoed source additionally gets its
+    auditable scores.breakdown populated.
     """
     components = source.scores
+    rules = veto if veto is not None else DEFAULT_VETO
+    reasons = disqualify(source, rules)
+    if reasons:
+        components.composite = 0.0
+        components.disqualifiers = reasons
+        source.tier = Tier.D
+        return source
+
     # Seed the Authority component from the source's initial tier classification
     # (the §1.2-1.6 weight) when it hasn't been set, so the composite is not
     # recency-only. The composite then re-derives the FINAL tier below.
@@ -99,6 +213,8 @@ def score_source(
     if now_utc and components.recency is None and source.published_at:
         components.recency = recency_score(source.published_at, now_utc, half_life_days)
     components.composite = composite_score(components)
+    components.breakdown = _breakdown(components)
+    components.disqualifiers = []
     source.tier = tier_for_score(components.composite)
     return source
 
@@ -107,8 +223,9 @@ def score_sources(
     sources: List[Source],
     now_utc: Optional[str] = None,
     half_life_days: float = 30.0,
+    veto: Optional[VetoRules] = None,
 ) -> List[Source]:
-    return [score_source(s, now_utc, half_life_days) for s in sources]
+    return [score_source(s, now_utc, half_life_days, veto) for s in sources]
 
 
 def claim_confidence(claim: Claim, sources_by_id: Dict[str, Source]) -> int:

@@ -1,6 +1,6 @@
 ---
 name: deep-research-skill
-version: 1.1.0
+version: 1.2.0
 author: Andrey Zagreev (https://t.me/zagreev)
 last_updated: 2026-06-11
 description: |
@@ -71,13 +71,13 @@ echo "CACHE_SKILL_MD=$CACHE_SKILL_MD"
 
 3. **engine-режим.** Движок доступен → по мере готовности фаз делегируй детерминированные шаги CLI (`python -m engine <checkpoint|resume|ingest|rank|score|factcheck|memory|eval|report>`) вместо того, чтобы делать их «в уме».
 
-**Текущий статус (v1.1.0):** движок Phase 1–13 реализован (247 юнит-тестов, 0 skipped). Phase 13 «Cost & Cache» добавила захват cache-сигналов в телеметрию (`cache_hit_rate`, `bundle_hash`, `cache_fragmentation`), именованные границы компактизации (`should_compact`), CLI-подкоманду `cost` и cost/latency-регрессию — см. секцию «Prompt Caching & Stable Prefix». Phase 9 «Typed Collection Seam» добавила `engine/collect.py` — единый типизированный контракт результата сбора `{status, summary, items[], next_valid_actions[]}` над любым провайдером (web_search/Jina/Firecrawl/…), со snippet-cap, in-session URL-дедупом и risk_class на провайдер. Phase 8 «Trust & Grounding» — trust-fence на retrieved-контент (prompt-injection защита), machine-readable remediation в fact-check и adversarial-тесты. **Все CLI-подкоманды функциональны** (JSON-in/JSON-out): `run`, `collect`, `report`, `ingest`, `rank`, `score`, `factcheck`, `cluster`, `memory`, `eval`, `cost` (новая), `checkpoint`, `resume`, `doctor`. Без Python / code-execution — prose-only режим. Дорожная карта — `docs/REBUILD_PLAN.md`.
+**Текущий статус (v1.2.0):** движок Phase 1–14 реализован (322 юнит-теста, 0 skipped). Phase 14 «Explainable & Calibratable Scoring» добавила anti-fit veto-слой (`disqualify` → composite=0 / tier=D), аудит-трейс скора (`scores.breakdown` — `[label, contribution]` суммой в composite), CLI-подкоманду `rescore` (полная ре-деривация над замороженным read-only набором, `--shallow` опция), append-only feedback-ledger (`memory --op record-feedback|list-feedback`, НЕ авто-консумится скорингом) и дешёвый RSS-тир сбора (`collect` provider=`rss`, `published_at`→`DateConfidence.HIGH`) с расширенным словарём `next_valid_actions`. Phase 13 «Cost & Cache» добавила захват cache-сигналов в телеметрию (`cache_hit_rate`, `bundle_hash`, `cache_fragmentation`), именованные границы компактизации (`should_compact`), CLI-подкоманду `cost` и cost/latency-регрессию — см. секцию «Prompt Caching & Stable Prefix». Phase 9 «Typed Collection Seam» добавила `engine/collect.py` — единый типизированный контракт результата сбора `{status, summary, items[], next_valid_actions[]}` над любым провайдером (web_search/Jina/Firecrawl/RSS/…), со snippet-cap, in-session URL-дедупом и risk_class на провайдер. Phase 8 «Trust & Grounding» — trust-fence на retrieved-контент (prompt-injection защита), machine-readable remediation в fact-check и adversarial-тесты. **Все CLI-подкоманды функциональны** (JSON-in/JSON-out): `run`, `collect`, `report`, `ingest`, `rank`, `score`, `factcheck`, `cluster`, `memory`, `eval`, `cost`, `rescore` (новая), `checkpoint`, `resume`, `doctor`. Без Python / code-execution — prose-only режим. Дорожная карта — `docs/REBUILD_PLAN.md`.
 
 ---
 
 # Deep Research Skill
 
-> **Версия:** 1.1.0 | **Последнее обновление:** 2026-06-14
+> **Версия:** 1.2.0 | **Последнее обновление:** 2026-06-14
 > **Полная документация:** `SKILL.master.md` (lazy loading)
 > **Heartbeat/Checkpoint протокол:** `AGENT.MD`
 
@@ -181,11 +181,13 @@ In engine-mode, `engine/plan.py` executes the SubTask DAG using topological orde
 1. **Выполняй сбор данных по tool hierarchy:**
 
 ```
-Layer 1 (Free):     web_search, browser_visit, ipython, shell, file_*, data_sources
+Layer 1 (Free):     web_search, browser_visit, ipython, shell, file_*, data_sources, RSS
 Layer 2 (Low):      Jina Reader (r.jina.ai), Jina Search (s.jina.ai), curl_cffi
 Layer 3 (Mid):      generate_image/video, CloakBrowser
 Layer 4 (Premium):  Firecrawl API, Jina DeepSearch, Browserbase
 ```
+
+**RSS tier (SAFE, Layer 1 cheap).** RSS/Atom feeds are classified as `risk_class = "SAFE"` by `collect.normalize`. The parser (`_parse_rss_xml`) handles both Atom (`<feed>/<entry>`) and RSS 2.0 (`<rss>/<channel>/<item>`) shapes, tolerating arbitrary namespace prefixes. Each entry yields `{url, title, snippet, published_at}`. Because feeds carry an explicit publication date, items ingested via RSS receive `date_confidence = "high"` — the highest date-confidence level — which flows directly into the recency component of the composite score. Recommended pattern: **discover-cheap-then-enrich-survivors** — scan RSS to find candidate URLs cheaply, then enrich only the survivors with a more expensive fetch (Jina Reader, Firecrawl).
 
 2. **Следуй fallback chain для каждого subtask:**
    - Статическая страница: browser_visit → Jina Reader → Firecrawl
@@ -470,6 +472,41 @@ Range: 0.00 – 1.00 | S: ≥0.90 | A: 0.75–0.89 | B: 0.55–0.74 | C: 0.35–
 
 ---
 
+## Explainable & Calibratable Scoring
+
+Phase 14 adds two complementary mechanisms to the authority scoring pipeline: an **anti-fit VETO layer** that disqualifies known-bad sources before any arithmetic, and a per-source **score breakdown** that makes every composite score fully auditable.
+
+### Anti-fit VETO layer
+
+When `score_source` is called with a `VetoRules` object, the `disqualify(source, rules)` function is applied first. A source is vetoed if it matches any of:
+
+- **Domain rule:** the source's host (exact, case-insensitive) appears in `rules.domains` — e.g. a known content farm or injection host. Match key: `domain:<host>`.
+- **Pattern rule:** a substring or regex in `rules.patterns` is found (case-insensitive) in the concatenation of the source's title, extract snippet, and URL — e.g. `"retracted"`, `"sponsored by"`, `"ignore previous instructions"` (prompt-injection guard). Match key: `pattern:<pattern>`.
+
+A vetoed source is **forced to `composite = 0.0` and `tier = D`** regardless of its individual component values. The matched reason strings are stored, sorted, in `source.scores.disqualifiers`. An empty `disqualifiers` list means the source was not vetoed. An empty `VetoRules()` disables veto entirely.
+
+`DEFAULT_VETO` ships with a small seed set of representative bad-domain and integrity markers; callers may extend or replace it per run. `disqualify` is pure (no mutation, no I/O).
+
+### Score breakdown
+
+After scoring, every `Source.scores.breakdown` carries an auditable ordered list of `[label, contribution]` pairs, one per composite term:
+
+```
+[["authority",      authority_value    * 0.30],
+ ["recency",        recency_value      * 0.25],
+ ["independence",   independence_value * 0.20],
+ ["traceability",   traceability_value * 0.15],
+ ["corroboration",  corroboration_value * 0.10]]
+```
+
+The `contribution` values (weight × component) sum exactly to `composite`. Labels and weights are derived from a single `_BREAKDOWN_TERMS` constant so the breakdown and the composite formula can never drift apart.
+
+The breakdown round-trips through `snapshot_to_dict` / `snapshot_from_dict` (CHECKPOINT_VERSION "1.2"): each pair is serialized as a 2-element JSON array; `_scores_from` normalizes them back to `[label, value]` lists on load.
+
+**Report surface.** The breakdown is surfaced in the report's source registry (the Источники / Sources section): each scored source shows its `composite`, `tier`, and the `breakdown` trace. Vetoed sources are flagged with their `disqualifiers` so the reader can understand why a source was excluded.
+
+---
+
 ## FactCheck Agent
 
 > **Полная документация:** `references/factcheck_system.md`
@@ -676,4 +713,4 @@ CloakBrowser (prevent) → CapSolver (AI, 2-5s, $0.80/1K)
 
 ---
 
-*Deep Research Skill v1.1.0 — testing release. Полная документация: SKILL.master.md. Язык адаптируется к языку пользователя. All phase modules load on-demand — no eager loading.*
+*Deep Research Skill v1.2.0 — testing release. Полная документация: SKILL.master.md. Язык адаптируется к языку пользователя. All phase modules load on-demand — no eager loading.*

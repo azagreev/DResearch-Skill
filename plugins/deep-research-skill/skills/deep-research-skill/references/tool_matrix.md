@@ -1138,24 +1138,56 @@ checkpoint:
 
 ## Appendix A: Quick Reference Card
 
-### Provider Risk Classification (collect seam — Phase 9)
+### Provider Risk Classification (collect seam — Phase 9 / Phase 14)
 
 The `collect.normalize()` seam stamps `metadata["risk_class"]` on every
 collected item before it reaches `ingest`.  Risk class reflects the fetch
 posture of each provider:
 
-| Provider | `fetched_via` key | `risk_class` | Notes |
-|----------|-------------------|--------------|-------|
-| Native web search | `native_web_search` | **SAFE** | Server-managed, sandboxed |
-| Jina Reader (r.jina.ai) | `jina_reader` | **SAFE** | Server-side proxy fetch |
-| Jina Search (s.jina.ai) | `jina_search` | **SAFE** | Server-side proxy fetch |
-| Firecrawl scrape/search | `firecrawl` | **SAFE** | Server-managed headless |
-| Browserbase | `browserbase` | **ELEVATED** | Remote browser, less sandboxed |
-| Direct curl / requests | `curl` | **ELEVATED** | Raw network fetch, no proxy |
+| Provider | `fetched_via` key | `risk_class` | Escalation class | Notes |
+|----------|-------------------|--------------|-----------------|-------|
+| Native web search | `native_web_search` | **SAFE** | — | Server-managed, sandboxed |
+| Jina Reader (r.jina.ai) | `jina_reader` | **SAFE** | — | Server-side proxy fetch |
+| Jina Search (s.jina.ai) | `jina_search` | **SAFE** | — | Server-side proxy fetch |
+| Firecrawl scrape/search | `firecrawl` | **SAFE** | — | Server-managed headless |
+| **RSS feed** | `rss` | **SAFE** | — | Cheapest tier; stdlib urllib host-side fetch; engine normalizes pre-fetched payload |
+| Browserbase | `browserbase` | **ELEVATED** | **browser** | Remote browser, less sandboxed |
+| Direct curl / requests | `curl` | **ELEVATED** | **curl** | Raw network fetch, no proxy |
+
+**RSS provider notes (Phase 14, AC14-5):**
+- The engine normalizes an RSS payload that the host has already fetched (via stdlib `urllib` or any HTTP client).  The engine itself never opens a socket — it only parses the XML/list.
+- An RSS endpoint reached with a browser `User-Agent` (host-side detail) can bypass JS challenges; the engine simply normalizes the payload delivered to it.
+- RSS items carry `published_at` (extracted from `<pubDate>` / `<published>` / `<updated>`), which causes downstream `ingest.source_from_raw` to assign `DateConfidence.HIGH`.
+- RSS is the **cheapest** tier: no external API credit is consumed by the engine layer.
 
 `ELEVATED` providers add `"escalate_to_firecrawl"` to `next_valid_actions`
 as a recovery hint.  Callers MAY use `risk_class` to gate logging, rate-limit
 policies, or human-review thresholds.
+
+### Escalation Actions Vocabulary (collect seam)
+
+`next_valid_actions` strings returned by `collect.normalize()`:
+
+| Action string | When emitted | Phase introduced |
+|--------------|--------------|-----------------|
+| `ingest_items` | Result list is non-empty | Phase 9 |
+| `retry_after_backoff` | Provider returned rate_limited or error | Phase 9 |
+| `escalate_to_firecrawl` | Provider is ELEVATED (browserbase, curl) | Phase 9 |
+| `enable_provider` | Provider returned status="disabled" | Phase 9 |
+| `fix_caller_payload_shape` | raw_payload is neither list nor control dict | Phase 9 |
+| `retry_with_proxy` | Provider is **browser-class** ELEVATED (browserbase) AND rate_limited | Phase 14 |
+| `fetch_next_page` | Any item in the payload carries a `"cursor"` field | Phase 14 |
+| `no_more_pages` | Payload list is empty (final page exhausted) | Phase 14 |
+| `enrich_top_n` | Provider is `rss` AND collected items have no `scores` field | Phase 14 |
+| `escalate_to_agent` | Cursor present (paginated result suggests agent-level depth needed) | Phase 14 |
+
+**PROVIDER_ESCALATION map (Phase 14):** distinguishes browser-class vs curl-class ELEVATED providers.
+```python
+PROVIDER_ESCALATION = {
+    "browserbase": "browser",   # Remote headless browser → retry_with_proxy on rate-limit
+    "curl":        "curl",      # Raw HTTP fetch → no proxy hint
+}
+```
 
 ### Cost Tier Summary
 

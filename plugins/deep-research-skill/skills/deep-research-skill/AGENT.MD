@@ -2,7 +2,7 @@
 
 ## Deep Research Skill | Multi-Agent Orchestration Layer
 
-> **Version:** 1.1.0
+> **Version:** 1.2.0
 > **Scope:** Heartbeat, checkpoints, quality gates, cost tracking, error recovery, multi-agent coordination
 > **Philosophy:** *Every agent reports, every gate validates, every failure recovers*
 > **Status:** Testing release
@@ -520,6 +520,37 @@ class GateCostTracker:
         )
         return log_line
 ```
+
+### 3.5 Authority Scoring: VETO + Breakdown (Phase 14)
+
+Phase 14 extends the scoring pipeline (`engine/score.py`) with two auditable mechanisms. Both are reflected in every scored `Source.scores` object and serialized into the checkpoint `state` block (version "1.2").
+
+#### Anti-fit VETO layer
+
+Before computing the composite score, `disqualify(source, rules)` is called with a `VetoRules` object. A source is vetoed — forced to `composite = 0.0`, `tier = D` — if:
+
+- Its lowercased host exactly matches any domain in `rules.domains` (e.g. known content farms, injection hosts).
+- A pattern in `rules.patterns` matches (case-insensitive substring or regex) the concatenation of the source's title, extract snippet, and URL — covering markers such as `"retracted"`, `"sponsored by"`, or `"ignore previous instructions"` (prompt-injection guard).
+
+Matched reasons are stored **sorted** in `source.scores.disqualifiers` (e.g. `["domain:spamblog.example", "pattern:retracted"]`). An empty list means no veto. A vetoed source cannot be promoted back by the composite arithmetic — the veto is absolute.
+
+#### Score breakdown
+
+Every scored source carries `source.scores.breakdown`: an ordered list of `[label, contribution]` pairs where `contribution = weight × component_value`. The five terms are:
+
+```
+[["authority",     authority    * 0.30],
+ ["recency",       recency      * 0.25],
+ ["independence",  independence * 0.20],
+ ["traceability",  traceability * 0.15],
+ ["corroboration", corroboration * 0.10]]
+```
+
+The contributions sum to `composite`. Unscored components (value `None`) contribute 0.0. The breakdown is generated from a single `_BREAKDOWN_TERMS` constant shared with `composite_score`, so the two can never diverge.
+
+**Checkpoint version "1.2":** `ScoreComponents` gained `breakdown` and `disqualifiers` in this version. Both default gracefully (`[]`) in `_scores_from`, so v1.0 and v1.1 checkpoints load without migration and the version is simply re-stamped to "1.2" on save.
+
+**Report surface.** The Источники / Sources section of the rendered report exposes each source's `composite`, `tier`, `breakdown` trace, and (when non-empty) `disqualifiers`, giving the reader a complete audit trail from raw components to final tier assignment.
 
 ---
 
@@ -1368,7 +1399,7 @@ for recovery — the heartbeat is only a hint.
 
 ```json
 {
-  "checkpoint_version": "1.0",
+  "checkpoint_version": "1.2",
   "run_id": "whoop-cdek-20260607-b7e2",
   "created_utc": "2026-06-07T10:02:40Z",
   "task_fingerprint": "<sha1(normalize(question|route|depth|scope))>",
@@ -1381,14 +1412,28 @@ for recovery — the heartbeat is only a hint.
   "task_frame": {"question": "...", "route": "B", "depth": "Standard",
                  "scope": ["cdek.shopping"], "acceptance_criteria": ["..."]},
   "subtasks": [{"id": "ST-1", "type": "SEARCH", "status": "done"}],
-  "sources":  [{"id": "S1", "url": "https://...", "tier": "S", "fetched_via": "jina", "status": "rendered",
-                "created_utc": "...", "raw_path": "raw/S1.txt", "extract": {"...": "..."}, "trust": "untrusted"}],
+  "sources":  [{"id": "S1", "url": "https://...", "tier": "B", "fetched_via": "jina", "status": "rendered",
+                "created_utc": "...", "raw_path": "raw/S1.txt", "extract": {"...": "..."}, "trust": "untrusted",
+                "scores": {
+                  "authority": 0.65, "recency": 0.80, "independence": 0.60,
+                  "traceability": 0.70, "corroboration": 0.50, "composite": 0.672,
+                  "breakdown": [
+                    ["authority", 0.195], ["recency", 0.200], ["independence", 0.120],
+                    ["traceability", 0.105], ["corroboration", 0.050]
+                  ],
+                  "disqualifiers": []
+                }}],
   "claims":   [{"id": "C1", "text": "...", "category": "verified", "confidence": 4,
                 "sources": ["S1", "S2"], "status": "confirmed"}],
   "open_items": ["cross-check Peak/One on a 2nd same-site listing"],
   "resume_instruction": "Sources S1-S2 already rendered — do NOT re-fetch; continue at Phase 3 FCA."
 }
 ```
+
+**Version notes for §8.0 state block:**
+- `"checkpoint_version": "1.2"` — added in Phase 14. Older checkpoints (1.0, 1.1) migrate automatically: `_scores_from` defaults `breakdown` to `[]` and `disqualifiers` to `[]` when absent; the version field is re-stamped on save.
+- `sources[].scores.breakdown` — list of `[label, contribution]` pairs (contributions sum to `composite`). Present after Phase 3 scoring; empty `[]` before.
+- `sources[].scores.disqualifiers` — sorted list of veto reasons (e.g. `["domain:spamblog.example"]`). Empty when not vetoed. A non-empty list means `composite` was forced to 0 and `tier` to D regardless of component values.
 
 **Write rule.** Emit a checkpoint at every gate boundary (post-collection → `cp_01_raw`, post-processing
 → `cp_02_processed`, post-analysis → `cp_03_draft`, post-synthesis → `cp_04_reviewed`, final), plus on
@@ -1534,7 +1579,67 @@ human_notification: false  # true if L2+ escalation required
 
 ---
 
-## 9. Appendices
+## 9. Phase 14: New CLI Verbs & Escalation Actions
+
+### 9.1 `rescore` — full re-derivation over a frozen snapshot
+
+```
+python -m engine rescore --input snapshot.json [--now NOW_UTC] [--veto-domains d1,d2] [--shallow]
+```
+
+`rescore` accepts a serialized `Snapshot` (CHECKPOINT_VERSION "1.2") and re-runs the full authority-scoring pipeline over its `sources` list without touching the `sources[]` data (URLs, extracts, raw_path, trust) or the `claims` list. It fills `scores.authority`, `scores.recency` (from `published_at` + `--now`), `scores.composite`, `scores.breakdown`, and `scores.disqualifiers` from scratch, re-assigns `tier`, then recomputes `claim.confidence` from the new tiers.
+
+Output is a new snapshot JSON with updated scores; the input snapshot is never mutated.
+
+**Behavioral guarantees:**
+- Deterministic: given the same `--now` and rules, produces identical output every time.
+- Read-only over collected sources: no network calls, no re-fetching.
+- VETO layer is applied: pass `--veto-domains` / `--veto-patterns` to supply additional disqualification rules on top of `DEFAULT_VETO`.
+
+**`--shallow` caveat.** With `--shallow`, `rescore` skips re-deriving the `recency` component from `published_at` (uses whatever recency value is already stored in `scores`, or `None`). Use this when `published_at` data is unreliable or when you only want to update domain/pattern veto results without changing the time-dependent component. Without `--shallow`, `--now` is required.
+
+### 9.2 Feedback-ledger verbs
+
+These verbs manage an **append-only feedback ledger** — a running record of human verdicts on individual sources and claims. The ledger is stored per-run alongside the checkpoint artifacts.
+
+```
+python -m engine record-feedback --run-dir DIR --source-id SID --verdict good|bad [--note "…"]
+python -m engine list-feedback   --run-dir DIR [--source-id SID] [--limit N]
+```
+
+**`record-feedback`:** Appends one feedback entry `{ts_utc, source_id, verdict, note}` to `<run-dir>/feedback.jsonl`. Verdict is `"good"` or `"bad"`. The ledger is strictly append-only: entries are never modified or deleted. Returns `{"appended": true, "entry": {...}}`.
+
+**`list-feedback`:** Reads and returns the full ledger (or filtered by `--source-id`) as a JSON array, newest-first. Returns `{"entries": [...], "total": N}`.
+
+**NOT auto-consumed by scoring.** The feedback ledger is an audit trail, not a scoring input. `rescore`, `score`, and the main pipeline do NOT read `feedback.jsonl`. Human verdicts must be acted on explicitly (e.g. by manually adding a domain to `VetoRules.domains`) — the engine does not silently alter scores based on logged feedback.
+
+### 9.3 New `next_valid_actions` escalation tokens
+
+`collect.normalize` and the broader pipeline may now emit the following action tokens in `CollectionResult.next_valid_actions` (and in gate-log `actions[]`):
+
+| Token | When emitted | Meaning |
+|-------|-------------|---------|
+| `retry_with_proxy` | Provider blocked, not rate-limited | Retry the same URL through a proxy/stealth tier (e.g. Firecrawl stealth, Browserbase) |
+| `escalate_to_agent` | Repeated failures across all fallback tiers | Hand control to a human agent or a supervised orchestrator loop |
+| `enrich_top_n` | Post-ranking, before synthesis | Fetch full content for the top-N ranked sources that currently have only a snippet |
+| `fetch_next_page` | Paginated result set, more pages available | Continue collection with the next page of results (token or offset provided in context) |
+| `no_more_pages` | Last page of a paginated set reached | Stop pagination; proceed to ingest |
+
+These tokens follow the same convention as the existing tokens (`ingest_items`, `retry_after_backoff`, `escalate_to_firecrawl`, `enable_provider`): they are **suggestions**, not commands. The calling agent or orchestrator decides whether to act on them.
+
+### 9.4 RSS tier in the collection contract
+
+RSS/Atom is classified `"SAFE"` in `PROVIDER_RISK` alongside `native_web_search`, `jina_reader`, `jina_search`, and `firecrawl`. Items produced by `collect.normalize("rss", ...)` carry:
+
+- `fetched_via = "rss"`
+- `metadata["risk_class"] = "SAFE"`
+- `published_at` — extracted from `<published>` (Atom), `<updated>` (Atom fallback), or `<pubDate>` (RSS 2.0)
+
+Because `published_at` is reliably present, ingest assigns `date_confidence = "high"` — the highest possible value — and the recency component of the composite score is computed (not defaulted). This makes RSS a high date-confidence discovery tier well-suited for the discover-cheap-then-enrich-survivors pattern described in SKILL.md Phase 2.
+
+---
+
+## 10. Appendices
 
 ### Appendix A: Quick Reference Card
 

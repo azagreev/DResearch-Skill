@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-06-14
+
+Phase 14 «Explainable & Calibratable Scoring» — приёмы, отобранные из мультиагентного разбора стороннего
+config-driven lead-gen проекта, которых у нас не было: объяснимый + калибруемый скоринг и дешёвый RSS-тир
+сбора. 322 юнит-теста (было 247), 0 skipped. Детерминизм и stdlib-only сохранены. `CHECKPOINT_VERSION 1.1→1.2`
+(ScoreComponents получил `breakdown` + `disqualifiers`; миграция graceful — старые чекпойнты грузятся с дефолтами).
+
+### Added (Phase 14)
+- **Anti-fit veto-слой** — `score.VetoRules{domains, patterns}` + `DEFAULT_VETO` (инжектируемый дефолт по
+  образцу `rank.py`; пустой `VetoRules()` отключает veto). `disqualify(source, rules) -> List[str]` (чистая,
+  sorted reasons). Совпадение по exact-host домену или substring/regex-паттерну → `composite=0.0`, `tier=D`,
+  `scores.disqualifiers=reasons`. Trust-control как PR-ревьюимый код, без runtime-чтения файлов.
+- **Score-breakdown (аудит-трейс)** — `ScoreComponents.breakdown`: упорядоченный список `[label, contribution]`
+  (вклад = вес × значение компонента) для 5 компонентов, сумма == composite (±1e-9). Источник истины —
+  `_BREAKDOWN_TERMS`. Рендерится в секции «Источники» отчёта (+ причина veto, если дисквалифицирован).
+- **CLI `rescore`** — полная ре-деривация скоринга над замороженным read-only снапшотом без рефетча:
+  `score_sources(+veto) → score_claims → factcheck → cluster`; `assert_sources_readonly` enforce (exit 1 +
+  `changed_ids` при мутации payload). JSON-out `{snapshot, diff:{sources, claims}, readonly_ok}`. `--shallow`
+  пропускает factcheck+cluster с warning (переносится и на `--report`-вывод). Детерминирован/идемпотентен;
+  компоненты НЕ обнуляются (authority re-seed'ится только при None → стабильность).
+- **Feedback-ledger** — append-only таблица `feedback` в `memory.py` (`record_feedback`/`list_feedback`,
+  `now_utc` пробрасывается); CLI `memory --op record-feedback|list-feedback`. **НЕ авто-консумится скорингом**
+  (human-reviewed калибровочный датасет; наличие записей не меняет вывод score).
+- **RSS cheap-tier** — `PROVIDER_RISK["rss"]="SAFE"`; `collect._parse_rss_xml` (stdlib `xml.etree`, Atom + RSS 2.0,
+  namespace-tolerant) → items с `published_at` → `DateConfidence.HIGH` на ingest. Паттерн discover-cheap-then-
+  enrich-survivors. Сетевой фетч остаётся host-side (движок только нормализует payload).
+- **Расширение словаря `next_valid_actions`** — `PROVIDER_ESCALATION` (browser/curl-классы); новые токены
+  `retry_with_proxy` (browser-class rate_limited), `escalate_to_agent`, `enrich_top_n`, `fetch_next_page`,
+  `no_more_pages`. 5 существующих action-строк и действия существующих провайдеров неизменны (backward compat).
+- **Доки** — `SKILL.md` секция «Explainable & Calibratable Scoring» + RSS в Phase 2; `AGENT.MD` §3.5 (veto +
+  breakdown), §9 (rescore-verb, feedback-verbs, escalation-токены, RSS-контракт).
+- `tests/test_phase14_scoring.py` (13) + `test_phase14_rescore.py` (11) + `test_phase14_feedback.py` (5) +
+  `test_phase14_collect.py` (46) — non-vacuous: veto переопределяет Tier S, breakdown суммируется в composite,
+  tier-сдвиг пропагирует в confidence+category, `--shallow` оставляет verdict протухшим, read-only guard ловит
+  мутацию extract, feedback не влияет на скоринг, RSS→`DateConfidence.HIGH`, backward-compat collect-действий.
+
+### Migration (Phase 14 freeze)
+- `CHECKPOINT_VERSION "1.1" → "1.2"`; `_migrate` 1.1→1.2 — re-stamp (новые ScoreComponents-поля деградируют
+  через `.get`-дефолты в `_scores_from`). Чекпойнты v1.0/v1.1 без новых полей грузятся и валидны.
+
 ## [1.1.0] - 2026-06-14
 
 Phase 13 «Cost & Cache» — закрывает оставшийся ABP-чеклист в нашей зоне контроля (prompt-caching / cost).
