@@ -9,9 +9,9 @@ footer). Deterministic. stdlib-only. Python >= 3.10.
 from __future__ import annotations
 
 from collections import Counter
-from typing import Dict, List
+from typing import Dict, List, Optional
 
-from .model import CATEGORY_LABELS, Claim, ClaimCategory, Snapshot, Source
+from .model import Claim, ClaimCategory, Snapshot, Source, get_category_labels
 from .policy import Disposition, ReportMode, disposition
 
 _CONFIDENCE_EMOJI = {5: "🔵", 4: "🟢", 3: "🟡", 2: "🔴", 1: "⚪"}
@@ -19,6 +19,7 @@ _CONFIDENCE_EMOJI = {5: "🔵", 4: "🟢", 3: "🟡", 2: "🔴", 1: "⚪"}
 _INCLUDED = {Disposition.INCLUDE, Disposition.INCLUDE_WITH_FLAG, Disposition.INCLUDE_AS_CORRECTION}
 
 # Short labels for the inline score breakdown on each source line.
+# Language-neutral shorthand — intentionally NOT translated.
 _BREAKDOWN_ABBR = {
     "authority": "auth",
     "recency": "rec",
@@ -26,6 +27,37 @@ _BREAKDOWN_ABBR = {
     "traceability": "trace",
     "corroboration": "corrob",
 }
+
+# Report section labels by language. "ru" is the default and reproduces the
+# original output byte-for-byte; "en" is for English-only contexts (benchmarks,
+# English tasks). Driven by TaskFrame.language (v1.4 — activates the field).
+_LABELS = {
+    "ru": {
+        "title": "Отчёт",
+        "agg_confidence": "Агрегированная уверенность",
+        "findings": "выводов",
+        "other_findings": "Прочие выводы",
+        "corrections": "Опровергнуто / коррекции",
+        "sources": "Источники",
+        "footer": ("Выводов: {findings} · коррекций: {corrections} · "
+                   "исключено-в-память: {excluded} · на пересмотр: {revision}"),
+    },
+    "en": {
+        "title": "Report",
+        "agg_confidence": "Aggregate confidence",
+        "findings": "findings",
+        "other_findings": "Other findings",
+        "corrections": "Refuted / corrections",
+        "sources": "Sources",
+        "footer": ("Findings: {findings} · corrections: {corrections} · "
+                   "excluded-to-memory: {excluded} · flagged-for-revision: {revision}"),
+    },
+}
+
+
+def _labels(language: str) -> Dict[str, str]:
+    """Section-label table for the report language; falls back to ru."""
+    return _LABELS.get((language or "ru").lower(), _LABELS["ru"])
 
 
 def confidence_emoji(confidence: int) -> str:
@@ -48,8 +80,8 @@ def _source_annotation(source: Source) -> str:
     return ""
 
 
-def _flag(claim: Claim) -> str:
-    label, emoji = CATEGORY_LABELS.get(claim.category, ("", ""))
+def _flag(claim: Claim, language: str = "ru") -> str:
+    label, emoji = get_category_labels(language).get(claim.category, ("", ""))
     return f" {emoji} _{label}_" if label else ""
 
 
@@ -58,16 +90,29 @@ def _cites(claim: Claim, sources_by_id: Dict[str, Source]) -> str:
     return f" — {' '.join(refs)}" if refs else ""
 
 
-def _finding_line(claim: Claim, disp: Disposition, sources_by_id: Dict[str, Source]) -> str:
-    flag = _flag(claim) if disp is Disposition.INCLUDE_WITH_FLAG else ""
+def _finding_line(
+    claim: Claim, disp: Disposition, sources_by_id: Dict[str, Source], language: str = "ru"
+) -> str:
+    flag = _flag(claim, language) if disp is Disposition.INCLUDE_WITH_FLAG else ""
     return f"- {confidence_emoji(claim.confidence)} {claim.text}{flag}{_cites(claim, sources_by_id)}"
 
 
 def render_markdown(
     snapshot: Snapshot,
     report_mode: ReportMode = ReportMode.FINDINGS,
+    language: Optional[str] = None,
 ) -> str:
-    """Render `snapshot` to a cluster-first Markdown report under `report_mode`."""
+    """Render `snapshot` to a cluster-first Markdown report under `report_mode`.
+
+    `language` selects section labels ("ru" default, "en" supported). When None
+    it is derived from `snapshot.task_frame.language`, so the field drives the
+    report language end-to-end for every caller (v1.4 — activates the field). An
+    explicit value overrides the snapshot.
+    """
+    if language is None:
+        language = snapshot.task_frame.language if snapshot.task_frame else "ru"
+    labels = _labels(language)
+
     sources_by_id = {s.id: s for s in snapshot.sources}
     claims_by_id = {c.id: c for c in snapshot.claims}
     disp = {c.id: disposition(c, report_mode) for c in snapshot.claims}
@@ -79,10 +124,13 @@ def render_markdown(
     ]
 
     question = snapshot.task_frame.question if snapshot.task_frame else snapshot.run_id
-    lines: List[str] = [f"# Отчёт: {question}"]
+    lines: List[str] = [f"# {labels['title']}: {question}"]
     if findings:
         agg = round(sum(c.confidence for c in findings) / len(findings))
-        lines.append(f"**Агрегированная уверенность:** {confidence_emoji(agg)} {agg}/5 · выводов: {len(findings)}")
+        lines.append(
+            f"**{labels['agg_confidence']}:** {confidence_emoji(agg)} {agg}/5 · "
+            f"{labels['findings']}: {len(findings)}"
+        )
     lines.append("")
 
     # cluster-first
@@ -96,24 +144,24 @@ def render_markdown(
             lines.append(f"> ⚠️ {cluster.uncertainty}")
         for claim in in_cluster:
             grouped.add(claim.id)
-            lines.append(_finding_line(claim, disp[claim.id], sources_by_id))
+            lines.append(_finding_line(claim, disp[claim.id], sources_by_id, language))
         lines.append("")
 
     ungrouped = [c for c in findings if c.id not in grouped]
     if ungrouped:
-        lines.append("## Прочие выводы")
+        lines.append(f"## {labels['other_findings']}")
         for claim in ungrouped:
-            lines.append(_finding_line(claim, disp[claim.id], sources_by_id))
+            lines.append(_finding_line(claim, disp[claim.id], sources_by_id, language))
         lines.append("")
 
     if corrections:
-        lines.append("## Опровергнуто / коррекции")
+        lines.append(f"## {labels['corrections']}")
         for claim in corrections:
             lines.append(f"- ❌ {claim.text}{_cites(claim, sources_by_id)}")
         lines.append("")
 
     if snapshot.sources:
-        lines.append("## Источники")
+        lines.append(f"## {labels['sources']}")
         for source in snapshot.sources:
             tier = f" ({source.tier.value})" if source.tier is not None else ""
             lines.append(f"- [{source.id}]{tier} {source.url}{_source_annotation(source)}")
@@ -122,8 +170,11 @@ def render_markdown(
     counts = Counter(disp.values())
     lines.append("---")
     lines.append(
-        f"_Выводов: {len(findings)} · коррекций: {len(corrections)} · "
-        f"исключено-в-память: {counts.get(Disposition.EXCLUDE_BUT_RECORD, 0)} · "
-        f"на пересмотр: {counts.get(Disposition.TRIGGER_REVISION, 0)}_"
+        "_" + labels["footer"].format(
+            findings=len(findings),
+            corrections=len(corrections),
+            excluded=counts.get(Disposition.EXCLUDE_BUT_RECORD, 0),
+            revision=counts.get(Disposition.TRIGGER_REVISION, 0),
+        ) + "_"
     )
     return "\n".join(lines)

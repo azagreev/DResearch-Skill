@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-06-14
+
+### Added
+- **Английский рендер отчёта** через `TaskFrame.language` (`report.render_markdown(..., language=...)` + `model.get_category_labels` / `CATEGORY_LABELS_EN`). `ru` — дефолт (вывод байт-в-байт прежний), `en` — поддержан; неизвестный язык → фоллбэк `ru`. Язык по умолчанию берётся из `snapshot.task_frame.language`, поэтому поле управляет языком отчёта end-to-end для всех вызывающих (`engine run` / `report` / `rescore`); явный аргумент переопределяет.
+
+### Fixed
+- **Закрыт долг «мёртвого поля»** (инвариант #9, TD-3): `TaskFrame.language` ранее парсилось, но не потреблялось ни одним вызывающим — теперь читается в `render_markdown`. Бар приёмки — живой `engine run` с `language:"en"` → английский отчёт (CLI-subprocess-тест), не только юнит. 361 тест (было 357), 0 skipped. `CHECKPOINT_VERSION` без изменений (1.3 — формат чекпойнта не затронут).
+
 ## [1.3.0] - 2026-06-14
 
 Phase 15 «Integration & Reachability» — закрывает системный долг, вскрытый пост-v1.2.0 аудитом: половина

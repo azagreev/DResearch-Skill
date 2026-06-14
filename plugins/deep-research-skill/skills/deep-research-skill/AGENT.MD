@@ -2,7 +2,7 @@
 
 ## Deep Research Skill | Multi-Agent Orchestration Layer
 
-> **Version:** 1.3.0
+> **Version:** 1.4.0
 > **Scope:** Heartbeat, checkpoints, quality gates, cost tracking, error recovery, multi-agent coordination
 > **Philosophy:** *Every agent reports, every gate validates, every failure recovers*
 > **Status:** Testing release

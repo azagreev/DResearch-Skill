@@ -74,6 +74,33 @@ class TestReport(unittest.TestCase):
         md = report.render_markdown(self._snapshot(), ReportMode.DEBUNK)
         self.assertIn("Непроверяемое утверждение", md)
 
+    def test_english_labels_driven_by_task_frame(self):
+        # v1.4: TaskFrame.language drives the report language end-to-end.
+        snap = self._snapshot()
+        snap.task_frame.language = "en"
+        md = report.render_markdown(snap, ReportMode.FINDINGS)
+        self.assertIn("# Report:", md)
+        self.assertIn("**Aggregate confidence:**", md)
+        self.assertIn("· findings: ", md)
+        self.assertIn("## Sources", md)
+        self.assertIn("Refuted / corrections", md)
+        self.assertIn("ONE VIEWPOINT", md)               # OPINION flag, English
+        self.assertIn("Findings: ", md)                  # footer
+        # No Russian labels leaked (claim TEXT stays as authored — only labels switch)
+        for ru in ("Отчёт", "Источники", "Опровергнуто", "ОДНА ИЗ ТОЧЕК ЗРЕНИЯ", "Выводов:"):
+            self.assertNotIn(ru, md)
+
+    def test_explicit_language_overrides_snapshot(self):
+        # snapshot defaults to ru; an explicit language arg wins.
+        md = report.render_markdown(self._snapshot(), ReportMode.FINDINGS, language="en")
+        self.assertIn("## Sources", md)
+        self.assertNotIn("Источники", md)
+
+    def test_unknown_language_falls_back_to_ru(self):
+        md = report.render_markdown(self._snapshot(), ReportMode.FINDINGS, language="zz")
+        self.assertIn("# Отчёт:", md)
+        self.assertIn("## Источники", md)
+
 
 class TestProviders(unittest.TestCase):
     def test_parse_and_precedence(self):

@@ -101,7 +101,7 @@ class ClaimCategory(str, Enum):
     UNVERIFIED = "unverified"  # НЕ УДАЛОСЬ ПРОВЕРИТЬ
 
 
-# machine key -> (Russian label, emoji)
+# machine key -> (Russian label, emoji) — default, stays the ru table
 CATEGORY_LABELS: Dict["ClaimCategory", Tuple[str, str]] = {
     ClaimCategory.VERIFIED:   ("ВЕРНО", "✅"),
     ClaimCategory.FALSE:      ("НЕВЕРНО", "❌"),
@@ -110,6 +110,22 @@ CATEGORY_LABELS: Dict["ClaimCategory", Tuple[str, str]] = {
     ClaimCategory.OPINION:    ("ОДНА ИЗ ТОЧЕК ЗРЕНИЯ", "🔮"),
     ClaimCategory.UNVERIFIED: ("НЕ УДАЛОСЬ ПРОВЕРИТЬ", "❓"),
 }
+
+# machine key -> (English label, emoji) — used when TaskFrame.language == "en".
+CATEGORY_LABELS_EN: Dict["ClaimCategory", Tuple[str, str]] = {
+    ClaimCategory.VERIFIED:   ("VERIFIED", "✅"),
+    ClaimCategory.FALSE:      ("FALSE", "❌"),
+    ClaimCategory.OUTDATED:   ("OUTDATED", "⏰"),
+    ClaimCategory.INCOMPLETE: ("INCOMPLETE", "⚠️"),
+    ClaimCategory.OPINION:    ("ONE VIEWPOINT", "🔮"),
+    ClaimCategory.UNVERIFIED: ("UNVERIFIED", "❓"),
+}
+
+
+def get_category_labels(language: str = "ru") -> Dict["ClaimCategory", Tuple[str, str]]:
+    """(label, emoji) map for the report language; falls back to ru for any
+    value other than "en". Consumes TaskFrame.language end-to-end (v1.4)."""
+    return CATEGORY_LABELS_EN if (language or "ru").lower() == "en" else CATEGORY_LABELS
 
 # NOTE: reportability is NOT a static property of a category. Whether a claim
 # enters the report depends on the claim's ROLE (own finding vs external claim

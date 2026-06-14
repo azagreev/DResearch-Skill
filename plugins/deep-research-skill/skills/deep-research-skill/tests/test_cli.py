@@ -112,6 +112,24 @@ class CliTest(unittest.TestCase):
         self.assertIn("Отчёт", out)
         self.assertIn("Whoop 30000", out)
 
+    def test_run_emits_english_report(self):
+        # v1.4 / AC-A2: TaskFrame.language drives the report language through the
+        # full `engine run` path (read_input -> run_pipeline -> render_markdown).
+        p = self._write({
+            "task_frame": {"question": "Whoop price", "route": "B", "depth": "Standard", "language": "en"},
+            "sources": [{"url": "https://cdek.shopping/whoop", "tier": "S", "published_at": "2026-06-25",
+                         "scores": {"independence": 0.9, "traceability": 0.9, "corroboration": 0.8}}],
+            "claims": [{"id": "C1", "text": "Whoop 30000", "sources": ["S1"]}],
+            "now": NOW,
+        })
+        rc, out = self._run(["run", "-i", p])
+        self.assertEqual(rc, 0)
+        self.assertIn("# Report:", out)
+        self.assertIn("## Sources", out)
+        self.assertIn("Whoop 30000", out)
+        self.assertNotIn("Отчёт", out)
+        self.assertNotIn("Источники", out)
+
     def test_report(self):
         snap = Snapshot(
             run_id="r", task_fingerprint="f",
