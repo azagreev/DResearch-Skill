@@ -218,6 +218,28 @@ class TestMalformedXml(unittest.TestCase):
         self.assertEqual(result.items, [])
 
 
+class TestRssDosGuards(unittest.TestCase):
+    def test_doctype_entity_declaration_is_refused(self):
+        # billion-laughs vector: a DTD with an internal entity. Real feeds never
+        # carry one; _parse_rss_xml must refuse before expansion (returns []).
+        evil = (
+            '<?xml version="1.0"?>'
+            '<!DOCTYPE rss [ <!ENTITY lol "lol"> '
+            '<!ENTITY lol2 "&lol;&lol;&lol;&lol;"> ]>'
+            '<rss version="2.0"><channel><item>'
+            '<title>&lol2;</title><link>https://e.com/a</link></item></channel></rss>'
+        )
+        self.assertEqual(collect._parse_rss_xml(evil), [])
+        self.assertEqual(collect.normalize("rss", evil).items, [])
+
+    def test_oversized_payload_is_rejected_before_parse(self):
+        too_big = "x" * (collect._RSS_MAX_BYTES + 1)
+        self.assertEqual(collect._parse_rss_xml(too_big), [])
+
+    def test_empty_string_is_safe(self):
+        self.assertEqual(collect._parse_rss_xml(""), [])
+
+
 # ---------------------------------------------------------------------------
 # AC14-5-6: RSS item through ingest.source_from_raw -> DateConfidence.HIGH
 # ---------------------------------------------------------------------------

@@ -45,11 +45,27 @@ class TestVeto(unittest.TestCase):
         self.assertEqual(src.scores.disqualifiers, ["domain:content-farm.example"])
 
     def test_pattern_veto_on_title(self):
+        # Inject a custom rule to exercise the pattern-match mechanism (the bare
+        # word "retracted" is deliberately NOT in DEFAULT_VETO — see score.py).
+        rules = score.VetoRules(patterns=("retracted",))
         src = _src(title="Landmark study [RETRACTED]", tier=Tier.A)
-        score.score_source(src, now_utc=NOW)
+        score.score_source(src, now_utc=NOW, veto=rules)
         self.assertEqual(src.tier, Tier.D)
         self.assertEqual(src.scores.composite, 0.0)
         self.assertEqual(src.scores.disqualifiers, ["pattern:retracted"])
+
+    def test_default_veto_does_not_false_positive_on_discussed_marker(self):
+        # A legitimate, high-authority source that merely *mentions* a retraction
+        # or a sponsor must NOT be vetoed by the conservative DEFAULT_VETO.
+        src = _src(
+            url="https://journal.example/article",
+            title="Review: the 2019 study was later retracted; trial sponsored by NIH",
+            tier=Tier.A,
+            scores=ScoreComponents(independence=0.8, traceability=0.8, corroboration=0.8),
+        )
+        score.score_source(src, now_utc=NOW)
+        self.assertEqual(src.scores.disqualifiers, [])
+        self.assertGreater(src.scores.composite, 0.0)
 
     def test_empty_vetorules_disables_veto(self):
         # An injected empty VetoRules() must NOT veto, even a known-bad host.
@@ -65,16 +81,17 @@ class TestVeto(unittest.TestCase):
 
     def test_disqualifiers_sorted_and_stable(self):
         # Two markers in one source -> reasons are sorted and de-duplicated.
+        rules = score.VetoRules(patterns=("retracted", "sponsored by"))
         src = _src(
             url="https://x.example/p",
             title="Sponsored by Acme — RETRACTED notice",
         )
-        reasons = score.disqualify(src, score.DEFAULT_VETO)
+        reasons = score.disqualify(src, rules)
         self.assertEqual(reasons, sorted(reasons))
         self.assertIn("pattern:retracted", reasons)
         self.assertIn("pattern:sponsored by", reasons)
         # Pure: a second call gives the identical list.
-        self.assertEqual(reasons, score.disqualify(src, score.DEFAULT_VETO))
+        self.assertEqual(reasons, score.disqualify(src, rules))
 
     def test_non_vetoed_source_has_empty_disqualifiers(self):
         src = _src(tier=Tier.A)

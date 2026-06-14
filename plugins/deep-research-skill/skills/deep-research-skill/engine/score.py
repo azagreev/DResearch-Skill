@@ -52,15 +52,21 @@ class VetoRules:
 
     `domains`  — exact-host match (case-insensitive), e.g. a known content farm.
     `patterns` — substrings/regexes tested (case-insensitive) against the source's
-                 title + snippet + url; markers like RETRACTED or "sponsored by".
+                 title + snippet + url; self-declaring markers like an advertorial
+                 banner or an embedded prompt-injection payload.
     An empty VetoRules() disables veto entirely (matches nothing).
     """
     domains: frozenset = field(default_factory=frozenset)
     patterns: tuple = field(default_factory=tuple)
 
 
-# A few representative entries: known content-farm / injection hosts plus
-# integrity / advertorial markers. Substring-matched, case-insensitive.
+# Conservative default seed: known content-farm / injection example hosts plus
+# only *self-declaring* markers that disqualify a source wherever they appear.
+# Deliberately NOT included: bare content words like "retracted" / "sponsored by"
+# — for a fact-checking engine a legitimate, high-authority source routinely
+# *discusses* a retraction or names a sponsor in its snippet, so substring-veto on
+# those inverts the signal. Operators who want them can inject a stricter
+# VetoRules; the mechanism stays fully general.
 DEFAULT_VETO = VetoRules(
     domains=frozenset({
         "content-farm.example",
@@ -68,8 +74,6 @@ DEFAULT_VETO = VetoRules(
         "ai-generated-news.example",
     }),
     patterns=(
-        "retracted",
-        "sponsored by",
         "this is an advertisement",
         "ignore previous instructions",
     ),

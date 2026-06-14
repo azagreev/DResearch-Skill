@@ -51,6 +51,10 @@ _JINA_PROVIDERS = frozenset({"jina_reader", "jina_search"})
 # Atom namespace prefix used in ElementTree tag strings.
 _ATOM_NS = "http://www.w3.org/2005/Atom"
 
+# Upper bound on a single RSS/Atom payload (bytes of the text). Feeds are small;
+# anything larger is rejected before parsing as a cheap DoS guard.
+_RSS_MAX_BYTES = 5_000_000
+
 
 def _strip_ns(tag: str) -> str:
     """Return the local name of an ElementTree tag, stripping any namespace."""
@@ -76,7 +80,19 @@ def _parse_rss_xml(xml_text: str) -> list[dict]:
     * Atom (<feed>/<entry>) and RSS 2.0 (<rss>/<channel>/<item>) shapes.
     * Arbitrary namespace prefixes; only local tag names are matched.
     * Missing or partial entry fields — best-effort extraction.
+
+    Hardened against adversarial host-fetched feed content: input over
+    `_RSS_MAX_BYTES` is rejected, and any DTD / entity declaration (`<!DOCTYPE`,
+    `<!ENTITY`) is refused outright — real RSS/Atom feeds never need one, and it
+    is the vector for internal-entity expansion (billion-laughs) DoS. Both cases
+    return [] (same contract as a parse error). External entities are already
+    not resolved by the stdlib parser.
     """
+    if not xml_text or len(xml_text) > _RSS_MAX_BYTES:
+        return []
+    lowered = xml_text.lower()
+    if "<!doctype" in lowered or "<!entity" in lowered:
+        return []
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError:
