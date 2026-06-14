@@ -141,6 +141,20 @@ class CliTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("verified fact", out)
 
+    def test_report_emits_english(self):
+        # v1.4: the `report` verb also honors TaskFrame.language end-to-end.
+        snap = Snapshot(
+            run_id="r", task_fingerprint="f",
+            task_frame=TaskFrame(question="Q", route=Route.FOCUSED, depth=Depth.STANDARD, language="en"),
+            sources=[Source(id="S1", url="u", tier=Tier.S)],
+            claims=[Claim(id="C1", text="verified fact", category=ClaimCategory.VERIFIED, confidence=4, sources=["S1"])],
+        )
+        rc, out = self._run(["report", "-i", self._write(snapshot_to_dict(snap))])
+        self.assertEqual(rc, 0)
+        self.assertIn("# Report:", out)
+        self.assertIn("## Sources", out)
+        self.assertNotIn("Отчёт", out)
+
 
 if __name__ == "__main__":
     unittest.main()

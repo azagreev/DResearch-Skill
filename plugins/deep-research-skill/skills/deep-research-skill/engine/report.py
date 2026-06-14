@@ -104,8 +104,9 @@ def render_markdown(
 ) -> str:
     """Render `snapshot` to a cluster-first Markdown report under `report_mode`.
 
-    `language` selects section labels ("ru" default, "en" supported). When None
-    it is derived from `snapshot.task_frame.language`, so the field drives the
+    `language` selects report labels — section headers AND per-claim category
+    flags ("ru" default, "en" supported). When None it is derived from
+    `snapshot.task_frame.language`, so the field drives the
     report language end-to-end for every caller (v1.4 — activates the field). An
     explicit value overrides the snapshot.
     """
