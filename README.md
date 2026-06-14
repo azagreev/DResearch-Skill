@@ -296,5 +296,5 @@ MIT License — см. [LICENSE](LICENSE).
 ---
 
 <p align="center">
-  <b>Deep Research Skill v1.0.0</b> · Автор: Andrey Zagreev · <a href="https://t.me/zagreev">@zagreev</a>
+  <b>Deep Research Skill v1.1.0</b> · Автор: Andrey Zagreev · <a href="https://t.me/zagreev">@zagreev</a>
 </p>
