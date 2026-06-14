@@ -15,7 +15,7 @@ from dataclasses import dataclass, field, fields, is_dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
-CHECKPOINT_VERSION = "1.2"
+CHECKPOINT_VERSION = "1.3"
 
 
 # --------------------------------------------------------------------------- #
@@ -164,6 +164,7 @@ class TaskFrame:
 class GateResult:
     id: str
     verdict: GateVerdict
+    reason: Optional[str] = None  # v1.3: why a transition was blocked (None on PASS)
 
 
 @dataclass
@@ -231,6 +232,7 @@ class Claim:
     cluster_id: Optional[str] = None
     verdict_explanation: Optional[str] = None
     remediation: Optional[str] = None  # machine-readable "Violation: … Fix: …" when self-healable
+    metadata: Dict[str, Any] = field(default_factory=dict)  # v1.3: e.g. {"disagreement": bool, "reverified_category": str} from independent re-verification
 
 
 @dataclass
@@ -264,6 +266,7 @@ class Snapshot:
     clusters: List[EvidenceCluster] = field(default_factory=list)
     open_items: List[str] = field(default_factory=list)
     resume_instruction: str = ""
+    trace: List[Dict[str, Any]] = field(default_factory=list)  # v1.3: RunTrace.as_list() — per-stage run events
 
 
 # --------------------------------------------------------------------------- #
@@ -325,7 +328,7 @@ def _task_frame_from(d: Dict[str, Any]) -> TaskFrame:
 
 
 def _gate_from(d: Dict[str, Any]) -> GateResult:
-    return GateResult(id=d["id"], verdict=GateVerdict(d["verdict"]))
+    return GateResult(id=d["id"], verdict=GateVerdict(d["verdict"]), reason=d.get("reason"))
 
 
 def _subtask_from(d: Dict[str, Any]) -> SubTask:
@@ -388,6 +391,7 @@ def _claim_from(d: Dict[str, Any]) -> Claim:
         cluster_id=d.get("cluster_id"),
         verdict_explanation=d.get("verdict_explanation"),
         remediation=d.get("remediation"),
+        metadata=dict(d.get("metadata", {})),
     )
 
 
@@ -412,6 +416,9 @@ def _migrate(payload: Dict[str, Any]) -> Dict[str, Any]:
       1.1 -> 1.2 : ScoreComponents gained `breakdown` and `disqualifiers`; these are
                    nested per-source and default gracefully in `_scores_from`, so no
                    top-level injection is needed — the version is simply re-stamped.
+      1.2 -> 1.3 : Snapshot gained `trace` (injected as []); Claim gained `metadata`
+                   and GateResult gained `reason` (both default gracefully in their
+                   _from helpers).
       Any version > CHECKPOINT_VERSION raises ValueError (never load a future format).
       Current version is returned unchanged.
     """
@@ -449,6 +456,12 @@ def _migrate(payload: Dict[str, Any]) -> Dict[str, Any]:
             tf.setdefault("done_condition", None)
             tf.setdefault("forbidden_actions", [])
             p["task_frame"] = tf
+
+    # 1.2 -> 1.3: Snapshot gained `trace`; Claim gained `metadata`; GateResult
+    # gained `reason`. Only the top-level `trace` needs injection here — the
+    # nested `metadata`/`reason` default gracefully via _claim_from / _gate_from.
+    if _ver(version) <= _ver("1.2"):
+        p.setdefault("trace", [])
 
     # Normalize the version string to the canonical current value. Future
     # versions already raised above, so anything here is <= current; this also
@@ -491,6 +504,7 @@ def snapshot_from_dict(payload: Dict[str, Any]) -> Snapshot:
         clusters=[_cluster_from(x) for x in payload.get("clusters", [])],
         open_items=list(payload.get("open_items", [])),
         resume_instruction=payload.get("resume_instruction", ""),
+        trace=list(payload.get("trace", [])),
     )
 
 
