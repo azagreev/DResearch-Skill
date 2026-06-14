@@ -1584,34 +1584,38 @@ human_notification: false  # true if L2+ escalation required
 ### 9.1 `rescore` — full re-derivation over a frozen snapshot
 
 ```
-python -m engine rescore --input snapshot.json [--now NOW_UTC] [--veto-domains d1,d2] [--shallow]
+python -m engine rescore --input snapshot.json [--shallow] [--report [--mode findings|debunk|mixed]] [--out PATH]
 ```
 
-`rescore` accepts a serialized `Snapshot` (CHECKPOINT_VERSION "1.2") and re-runs the full authority-scoring pipeline over its `sources` list without touching the `sources[]` data (URLs, extracts, raw_path, trust) or the `claims` list. It fills `scores.authority`, `scores.recency` (from `published_at` + `--now`), `scores.composite`, `scores.breakdown`, and `scores.disqualifiers` from scratch, re-assigns `tier`, then recomputes `claim.confidence` from the new tiers.
+JSON-in (via `--input` or stdin): `{ "snapshot": <Snapshot dict, CHECKPOINT_VERSION "1.2">, "now"?: ISO8601, "model_categories"?: {claim_id: category}, "half_life_days"?: 30 }`. The timestamp is the JSON `now` field — there is **no** `--now` CLI flag on `rescore`.
 
-Output is a new snapshot JSON with updated scores; the input snapshot is never mutated.
+`rescore` re-runs scoring over the snapshot's `sources` list without touching the source payloads (`url`, `extract`, `raw_path`, `trust`) or source identity: `score_sources` (recomputes `composite`/`tier`/`breakdown`/`disqualifiers` from the **cached** components — `authority`/`recency` are re-seeded only when `None`, which is what makes rescore idempotent) → `score_claims` → (deep mode only) `factcheck_claims` → `cluster_claims`.
+
+**Output (default JSON):** `{ "snapshot": <rescored>, "diff": {"sources": [{id, tier_before, tier_after}], "claims": [{id, confidence_before, confidence_after, category_before, category_after}]}, "readonly_ok": true }` (plus a `"warning"` field under `--shallow`). If any source payload changed, exits **1** with `{ "error", "changed_ids" }`.
 
 **Behavioral guarantees:**
-- Deterministic: given the same `--now` and rules, produces identical output every time.
-- Read-only over collected sources: no network calls, no re-fetching.
-- VETO layer is applied: pass `--veto-domains` / `--veto-patterns` to supply additional disqualification rules on top of `DEFAULT_VETO`.
+- Deterministic & idempotent: same input + rules → byte-identical output; a second rescore yields an empty diff.
+- Read-only over collected sources: no network, no re-fetch; enforced by `assert_sources_readonly`.
+- VETO: `DEFAULT_VETO` is re-applied (same as the collect-time pipeline). It is not customizable via the CLI; inject a custom `VetoRules` at the library level if needed.
 
-**`--shallow` caveat.** With `--shallow`, `rescore` skips re-deriving the `recency` component from `published_at` (uses whatever recency value is already stored in `scores`, or `None`). Use this when `published_at` data is unreliable or when you only want to update domain/pattern veto results without changing the time-dependent component. Without `--shallow`, `--now` is required.
+**Flags.** `--shallow` skips **factcheck + clustering** only (NOT recency) — categories/verdicts are then stale relative to the new tiers and a warning is emitted (carried onto the `--report` Markdown too). `--report` emits Markdown instead of JSON (`--mode findings|debunk|mixed`). `--out PATH` also writes the rescored snapshot JSON to `PATH`.
 
-### 9.2 Feedback-ledger verbs
+### 9.2 Feedback-ledger verbs (`memory` subcommand)
 
-These verbs manage an **append-only feedback ledger** — a running record of human verdicts on individual sources and claims. The ledger is stored per-run alongside the checkpoint artifacts.
+An **append-only feedback ledger** — human verdicts on engine decisions — lives as a `feedback` table in the cross-run SQLite store (`memory.py`), not a flat file. It is managed through the `memory` subcommand:
 
 ```
-python -m engine record-feedback --run-dir DIR --source-id SID --verdict good|bad [--note "…"]
-python -m engine list-feedback   --run-dir DIR [--source-id SID] [--limit N]
+python -m engine memory --op record-feedback [--db PATH]            # JSON-in: a record (or {"record": {...}})
+python -m engine memory --op list-feedback   [--db PATH] [--kind K] [--run-id R]
 ```
 
-**`record-feedback`:** Appends one feedback entry `{ts_utc, source_id, verdict, note}` to `<run-dir>/feedback.jsonl`. Verdict is `"good"` or `"bad"`. The ledger is strictly append-only: entries are never modified or deleted. Returns `{"appended": true, "entry": {...}}`.
+`--db PATH` selects the SQLite file (omit → in-memory, for tests). The timestamp is `--now` (stamped verbatim into `recorded_utc`; no clock read).
 
-**`list-feedback`:** Reads and returns the full ledger (or filtered by `--source-id`) as a JSON array, newest-first. Returns `{"entries": [...], "total": N}`.
+**`record-feedback`:** JSON-in a record `{run_id?, item_id?, kind?, engine_value?, human_value?, trace_json?}` (a bare record or `{"record": {...}}`). Always INSERTs — strictly append-only, so two records with the same `item_id` produce two rows. Returns `{ "id": <rowid> }`.
 
-**NOT auto-consumed by scoring.** The feedback ledger is an audit trail, not a scoring input. `rescore`, `score`, and the main pipeline do NOT read `feedback.jsonl`. Human verdicts must be acted on explicitly (e.g. by manually adding a domain to `VetoRules.domains`) — the engine does not silently alter scores based on logged feedback.
+**`list-feedback`:** Returns `{ "feedback": [ {id, run_id, item_id, kind, engine_value, human_value, trace_json, recorded_utc}, … ] }`, ordered oldest-first (by `id`); optional `--kind` / `--run-id` filters.
+
+**NOT auto-consumed by scoring.** The ledger is an audit/calibration trail, never a scoring input: `rescore`, `score`, and the pipeline never read the `feedback` table. Verdicts are acted on explicitly (e.g. by adding a domain to a `VetoRules` at the library level) — the engine never silently alters scores from logged feedback.
 
 ### 9.3 New `next_valid_actions` escalation tokens
 

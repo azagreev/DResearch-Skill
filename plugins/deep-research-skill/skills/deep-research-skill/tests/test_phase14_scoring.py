@@ -98,6 +98,18 @@ class TestVeto(unittest.TestCase):
         score.score_source(src, now_utc=NOW)
         self.assertEqual(src.scores.disqualifiers, [])
 
+    def test_veto_clears_stale_breakdown(self):
+        # A source scored non-vetoed first (breakdown populated), then re-scored
+        # under a rule that now vetoes it, must not carry the stale breakdown.
+        src = _src(url="https://x.example/p", title="ok", tier=Tier.A)
+        score.score_source(src, now_utc=NOW)
+        self.assertTrue(src.scores.breakdown)  # populated on the clean pass
+        rules = score.VetoRules(domains=frozenset({"x.example"}))
+        score.score_source(src, now_utc=NOW, veto=rules)
+        self.assertEqual(src.tier, Tier.D)
+        self.assertEqual(src.scores.breakdown, [])
+        self.assertEqual(src.scores.disqualifiers, ["domain:x.example"])
+
 
 class TestBreakdown(unittest.TestCase):
     def test_breakdown_sums_to_composite(self):

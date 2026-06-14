@@ -206,6 +206,7 @@ def score_source(
     if reasons:
         components.composite = 0.0
         components.disqualifiers = reasons
+        components.breakdown = []  # never carry a stale trace alongside a veto
         source.tier = Tier.D
         return source
 
