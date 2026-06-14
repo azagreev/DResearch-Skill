@@ -17,7 +17,9 @@ bench/
   draco.py    # load_draco(jsonl), parse_rubric, Task/Rubric/Criterion, AXES, DOMAINS
   score.py    # score_task → TaskScore (overall + per-axis), aggregate → Summary, delta (A/B)
   __main__.py # CLI: `score` one arm, `diff` two arms
-  tests/      # hand-worked unit tests for the exact formula (incl. negative weights)
+  judge/      # prompt_draco.txt (verbatim DRACO grading prompt) + collate.py (pure verdict assembly)
+  trust/      # deterministic trust metrics over the real engine (metrics.py); `python -m bench.trust`
+  tests/      # hand-worked unit tests (score/draco/collate/trust)
 ```
 
 ## Scoring (verbatim from the DRACO dataset card)

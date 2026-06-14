@@ -7,4 +7,6 @@ plus a shared collected source/claim set into engine inputs. stdlib-only.
 
 from __future__ import annotations
 
+from .build_engine_input import build_engine_input
+
 __all__ = ["build_engine_input"]
