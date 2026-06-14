@@ -1700,7 +1700,7 @@ Three verbs become reachable for the first time in Phase 15:
 python -m engine verify --input {snapshot, now?}
 ```
 
-JSON-in: `{snapshot: <Snapshot dict>, now?: ISO8601}` (or `{snapshot, subtasks}` for a subtask-scoped call).
+JSON-in: `{snapshot: <Snapshot dict>, now?: ISO8601}`. Re-verifies every claim in the snapshot; there is no subtask-scoped variant.
 
 JSON-out:
 ```json
@@ -1772,7 +1772,7 @@ Each key is `null` when the check passes. Non-null values:
 
 **Trace population.** `run_pipeline` creates a `RunTrace` instance and appends one `{event, ts}` dict per stage, in order: `ingest`, `score`, `factcheck`, `verify`, `cluster`, `build` (`ts` is the passed-in `now_utc`, never a clock read). At the end, `snapshot.trace = trace.as_list()` serializes the run log into the snapshot for checkpoint persistence and `engine gate`/`engine report` inspection.
 
-**Gate consultation.** The `next_phase` passed to `build_snapshot` is no longer hardcoded to `5`; it is determined by `state.gate_blocks_transition(snapshot, candidate_phase)` consulting the actual snapshot signals. This means the pipeline correctly reflects the blocked/unblocked state of the transition rather than always writing phase 5.
+**Gate consultation.** `run_pipeline` no longer hardcodes `next_phase=5`. After `build_snapshot` and after the gate-signal fields are set, it computes `snapshot.next_phase` as the highest phase `p∈{1..5}` for which `state.gate_blocks_transition(snapshot, p)` returns `None`, and records `snapshot.last_gate` (with `reason`). This means the pipeline reflects the blocked/unblocked state of the transition rather than always writing phase 5.
 
 ## 11. Appendices
 

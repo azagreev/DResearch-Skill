@@ -117,10 +117,11 @@ def run_pipeline(
     # semantic override, NOT general evidence-vs-recorded drift. Broader drift
     # detection (e.g. perturbation-based reverify) is a deliberate future follow-up.
     for claim in claims:
-        claim.metadata["disagreement"] = verify.disagreement(claim, sources, now_utc)
-        claim.metadata["reverified_category"] = verify.reverify_claim(
-            claim, sources, now_utc
-        ).value
+        # Re-derive once; disagreement is just `reverified != claim.category`,
+        # so calling verify.disagreement separately would re-run reverify_claim.
+        reverified = verify.reverify_claim(claim, sources, now_utc)
+        claim.metadata["disagreement"] = reverified != claim.category
+        claim.metadata["reverified_category"] = reverified.value
     trace.append("verify", ts=now_utc)
 
     clusters = cluster_claims(claims)

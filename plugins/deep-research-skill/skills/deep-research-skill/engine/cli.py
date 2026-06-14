@@ -433,7 +433,7 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     are read-only on the claim.
     """
     from .model import snapshot_from_dict
-    from .verify import disagreement, reverify_claim
+    from .verify import reverify_claim
 
     data = _read_input(args.input)
     snapshot = snapshot_from_dict(data["snapshot"])
@@ -441,8 +441,10 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     results = []
     n_disagreements = 0
     for claim in snapshot.claims:
+        # Re-derive once; `disagreement` is just `reverified != claim.category`,
+        # so calling both helpers would re-run reverify_claim a second time.
         reverified = reverify_claim(claim, snapshot.sources, now)
-        dis = disagreement(claim, snapshot.sources, now)
+        dis = reverified != claim.category
         if dis:
             n_disagreements += 1
         results.append({
