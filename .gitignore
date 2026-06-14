@@ -10,6 +10,11 @@ desktop.ini
 *.log
 *.tmp
 _dr_stage/
+tmp/
+
+# DRACO benchmark data + run artifacts (license/size — not committed)
+bench/judge/runs/
+tmp/draco/
 
 # Research runtime artifacts (heartbeats, checkpoints, costs, audit)
 research_output/
