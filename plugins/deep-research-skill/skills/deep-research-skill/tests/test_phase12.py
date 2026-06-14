@@ -574,10 +574,11 @@ class TestReviewHardening(unittest.TestCase):
     """Regressions for the three LOW findings from the v1.0.0 /code-review."""
 
     def test_patch_version_strings_migrate(self):
-        # "1.0.0" and "1.1.0" must load (compare on major.minor; normalize).
-        for v in ("1.0.0", "1.1.0", "1.0", "1.1"):
+        # Older checkpoints must load and normalize to the current version
+        # (compare on major.minor). 1.1 -> 1.2 ladder added in Phase 14.
+        for v in ("1.0.0", "1.1.0", "1.0", "1.1", "1.2"):
             snap = snapshot_from_dict(_v10_dict(checkpoint_version=v))
-            self.assertEqual(snap.checkpoint_version, "1.1")
+            self.assertEqual(snap.checkpoint_version, "1.2")
             self.assertEqual(validate_snapshot(snap), [])
         with self.assertRaises(ValueError):
             snapshot_from_dict(_v10_dict(checkpoint_version="9.9"))

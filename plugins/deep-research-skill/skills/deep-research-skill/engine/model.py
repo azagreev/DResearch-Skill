@@ -15,7 +15,7 @@ from dataclasses import dataclass, field, fields, is_dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
-CHECKPOINT_VERSION = "1.1"
+CHECKPOINT_VERSION = "1.2"
 
 
 # --------------------------------------------------------------------------- #
@@ -182,6 +182,12 @@ class ScoreComponents:
     composite = Authority*0.30 + Recency*0.25 + Independence*0.20
               + Traceability*0.15 + Corroboration*0.10
     All values in [0, 1]; None = not yet scored (filled by score.py in Phase 3).
+
+    `breakdown` is an auditable score trace: an ordered list of
+    [label, contribution] pairs (contribution = weight * component value) whose
+    sum equals `composite`. Filled by score.py (Phase 14). Empty until scored.
+    `disqualifiers` holds the anti-fit veto reasons that forced this source to
+    composite=0 / tier=D (sorted, empty when not vetoed).
     """
     authority: Optional[float] = None
     recency: Optional[float] = None
@@ -189,6 +195,8 @@ class ScoreComponents:
     traceability: Optional[float] = None
     corroboration: Optional[float] = None
     composite: Optional[float] = None
+    breakdown: List = field(default_factory=list)
+    disqualifiers: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -331,6 +339,10 @@ def _subtask_from(d: Dict[str, Any]) -> SubTask:
 
 
 def _scores_from(d: Dict[str, Any]) -> ScoreComponents:
+    # breakdown round-trips as a list of [label, value] lists (JSON has no
+    # tuples); normalize each entry to a 2-element list to keep the shape stable.
+    raw_breakdown = d.get("breakdown") or []
+    breakdown = [list(pair) for pair in raw_breakdown]
     return ScoreComponents(
         authority=d.get("authority"),
         recency=d.get("recency"),
@@ -338,6 +350,8 @@ def _scores_from(d: Dict[str, Any]) -> ScoreComponents:
         traceability=d.get("traceability"),
         corroboration=d.get("corroboration"),
         composite=d.get("composite"),
+        breakdown=breakdown,
+        disqualifiers=list(d.get("disqualifiers") or []),
     )
 
 
@@ -395,6 +409,9 @@ def _migrate(payload: Dict[str, Any]) -> Dict[str, Any]:
                    Snapshot gate signals (sources_screened, extraction_table_complete,
                    citations_verified) and TaskFrame goal fields (done_condition,
                    forbidden_actions).
+      1.1 -> 1.2 : ScoreComponents gained `breakdown` and `disqualifiers`; these are
+                   nested per-source and default gracefully in `_scores_from`, so no
+                   top-level injection is needed — the version is simply re-stamped.
       Any version > CHECKPOINT_VERSION raises ValueError (never load a future format).
       Current version is returned unchanged.
     """
