@@ -109,13 +109,17 @@ class TestReportRendering(unittest.TestCase):
             sources=sources,
         )
 
-    def test_report_contains_breakdown_string(self):
+    def test_breakdown_omitted_by_default_present_with_verbose(self):
+        # v1.5: the per-source score breakdown is decoration, omitted from the lean
+        # default report and shown only under verbose=True.
         src = _src(tier=Tier.A)
         score.score_source(src, now_utc=NOW)
-        out = render_markdown(self._snap([src]))
-        self.assertIn("## Источники", out)
-        self.assertIn("auth", out)
-        self.assertIn("corrob", out)
+        lean = render_markdown(self._snap([src]))
+        self.assertIn("## Источники", lean)
+        self.assertNotIn("corrob", lean)
+        verbose = render_markdown(self._snap([src]), verbose=True)
+        self.assertIn("auth", verbose)
+        self.assertIn("corrob", verbose)
 
 
 if __name__ == "__main__":

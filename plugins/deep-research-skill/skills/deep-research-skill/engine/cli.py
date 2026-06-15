@@ -210,7 +210,7 @@ def _cmd_rescore(args: argparse.Namespace) -> int:
         with open(args.out, "w", encoding="utf-8") as handle:
             json.dump(snapshot_to_dict(after), handle, ensure_ascii=False, indent=2)
     if getattr(args, "report", False):
-        md = report_mod.render_markdown(after, _report_mode(args.mode))
+        md = report_mod.render_markdown(after, _report_mode(args.mode), verbose=args.verbose)
         # Carry the shallow-staleness warning onto the Markdown path too, so it is
         # not silently dropped when --shallow is combined with --report.
         if out.get("warning"):
@@ -297,7 +297,7 @@ def _cmd_report(args: argparse.Namespace) -> int:
     from .model import snapshot_from_dict
 
     snapshot = snapshot_from_dict(_read_input(args.input))
-    _emit(report_mod.render_markdown(snapshot, _report_mode(args.mode)))
+    _emit(report_mod.render_markdown(snapshot, _report_mode(args.mode), verbose=args.verbose))
     return 0
 
 
@@ -419,7 +419,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     if getattr(args, "out", None):
         with open(args.out, "w", encoding="utf-8") as handle:
             json.dump(snapshot_to_dict(snapshot), handle, ensure_ascii=False, indent=2)
-    _emit(report_mod.render_markdown(snapshot, _report_mode(args.mode)))
+    _emit(report_mod.render_markdown(snapshot, _report_mode(args.mode), verbose=args.verbose))
     return 0
 
 
@@ -579,12 +579,14 @@ def build_parser() -> argparse.ArgumentParser:
     run = sub.add_parser("run", help="end-to-end: raw sources + claims JSON -> Markdown report")
     _add_input(run)
     run.add_argument("--mode", default="findings", help="report mode: findings|debunk|mixed")
+    run.add_argument("--verbose", action="store_true", help="include confidence emojis + per-source score breakdown (lean by default)")
     run.add_argument("--out", default=None, help="also write the resulting snapshot JSON here")
     run.set_defaults(func=_cmd_run)
 
     report = sub.add_parser("report", help="snapshot JSON -> Markdown")
     _add_input(report)
     report.add_argument("--mode", default="findings", help="report mode: findings|debunk|mixed")
+    report.add_argument("--verbose", action="store_true", help="include confidence emojis + per-source score breakdown (lean by default)")
     report.set_defaults(func=_cmd_report)
 
     collect = sub.add_parser("collect", help="normalize provider payload -> ingest-ready dicts (CollectionResult JSON)")
@@ -631,6 +633,7 @@ def build_parser() -> argparse.ArgumentParser:
     rescore.add_argument("--shallow", action="store_true", help="skip factcheck + clustering (verdicts may be stale)")
     rescore.add_argument("--report", action="store_true", help="render the rescored snapshot as Markdown instead of JSON")
     rescore.add_argument("--mode", default="findings", help="report mode (with --report): findings|debunk|mixed")
+    rescore.add_argument("--verbose", action="store_true", help="include confidence emojis + per-source score breakdown (lean by default)")
     rescore.add_argument("--out", default=None, help="also write the rescored snapshot JSON here")
     rescore.set_defaults(func=_cmd_rescore)
 

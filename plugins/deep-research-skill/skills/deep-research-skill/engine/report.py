@@ -89,16 +89,19 @@ def _cites(claim: Claim, sources_by_id: Dict[str, Source]) -> str:
 
 
 def _finding_line(
-    claim: Claim, disp: Disposition, sources_by_id: Dict[str, Source], language: str = "ru"
+    claim: Claim, disp: Disposition, sources_by_id: Dict[str, Source],
+    language: str = "ru", verbose: bool = False,
 ) -> str:
     flag = _flag(claim, language) if disp is Disposition.INCLUDE_WITH_FLAG else ""
-    return f"- {confidence_emoji(claim.confidence)} {claim.text}{flag}{_cites(claim, sources_by_id)}"
+    emoji = f"{confidence_emoji(claim.confidence)} " if verbose else ""
+    return f"- {emoji}{claim.text}{flag}{_cites(claim, sources_by_id)}"
 
 
 def render_markdown(
     snapshot: Snapshot,
     report_mode: ReportMode = ReportMode.FINDINGS,
     language: Optional[str] = None,
+    verbose: bool = False,
 ) -> str:
     """Render `snapshot` to a cluster-first Markdown report under `report_mode`.
 
@@ -107,6 +110,10 @@ def render_markdown(
     `snapshot.task_frame.language`, so the field drives the
     report language end-to-end for every caller (v1.4 — activates the field). An
     explicit value overrides the snapshot.
+
+    `verbose` (v1.5, default False) adds the confidence emojis and the per-source
+    score breakdown. The lean default omits both — they are decoration, not
+    content; opt in via `--verbose` / `verbose=True`.
     """
     if language is None:
         language = snapshot.task_frame.language if snapshot.task_frame else "ru"
@@ -126,8 +133,9 @@ def render_markdown(
     lines: List[str] = [f"# {labels['title']}: {question}"]
     if findings:
         agg = round(sum(c.confidence for c in findings) / len(findings))
+        conf = f"{confidence_emoji(agg)} " if verbose else ""
         lines.append(
-            f"**{labels['agg_confidence']}:** {confidence_emoji(agg)} {agg}/5 · "
+            f"**{labels['agg_confidence']}:** {conf}{agg}/5 · "
             f"{labels['findings']}: {len(findings)}"
         )
     lines.append("")
@@ -143,14 +151,14 @@ def render_markdown(
             lines.append(f"> ⚠️ {cluster.uncertainty}")
         for claim in in_cluster:
             grouped.add(claim.id)
-            lines.append(_finding_line(claim, disp[claim.id], sources_by_id, language))
+            lines.append(_finding_line(claim, disp[claim.id], sources_by_id, language, verbose))
         lines.append("")
 
     ungrouped = [c for c in findings if c.id not in grouped]
     if ungrouped:
         lines.append(f"## {labels['other_findings']}")
         for claim in ungrouped:
-            lines.append(_finding_line(claim, disp[claim.id], sources_by_id, language))
+            lines.append(_finding_line(claim, disp[claim.id], sources_by_id, language, verbose))
         lines.append("")
 
     if corrections:
@@ -163,7 +171,8 @@ def render_markdown(
         lines.append(f"## {labels['sources']}")
         for source in snapshot.sources:
             tier = f" ({source.tier.value})" if source.tier is not None else ""
-            lines.append(f"- [{source.id}]{tier} {source.url}{_source_annotation(source)}")
+            ann = _source_annotation(source) if verbose else ""
+            lines.append(f"- [{source.id}]{tier} {source.url}{ann}")
         lines.append("")
 
     counts = Counter(disp.values())
