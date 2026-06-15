@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-06-15
+
+Engine simplification — cut features inert on **both** DRACO and the trust metrics (invariant #10 "shipped ≠ valuable"). Each cut was gated by the deterministic trust scorecard (`bench/trust/`): determinism / unsupported-claim suppression / citation completeness / checkpoint fidelity remained byte-identical, proving the cuts removed dead code, not value. `CHECKPOINT_VERSION` unchanged (1.3 — no serialized field removed). Engine tests 362 → 351.
+
+### Removed
+- **Anti-fit veto layer** (`score.VetoRules` / `DEFAULT_VETO` / `disqualify`, the `veto=` param, the report veto-annotation): fired only on 3 `.example` placeholder hosts + 2 self-declaring phrases → inert on real sources (prompt-injection defense stays in the ingest trust-fence). `ScoreComponents.disqualifiers` field kept for checkpoint back-compat (now always empty).
+- **In-pipeline auto-verify** in `run_pipeline` (per-claim `reverify_claim` writing `claim.metadata["disagreement"]` / `["reverified_category"]`): never rendered in the report and constant-False on the common hint-less run. The standalone `verify` CLI verb and the `claim.metadata` field are kept.
+
+### Changed
+- **Lean report by default**: `render_markdown(verbose=False)` — confidence emojis (🔵🟢🟡) and the per-source score breakdown are now opt-in via `--verbose` (decoration, not content). Section labels, citations, category flags, and footer counts unchanged.
+
+### Deferred / Known gaps
+- Optional deprecations of `plan.py` and the feedback-ledger were considered but **deferred** — both remain reachable via CLI verbs (`plan`, `record/list-feedback`), so removing them would drop a capability, not dead code (would conflict with invariant #9). See `docs/PHASE_V1.5_SIMPLIFICATION_PLAN.md`.
+
 ## [1.4.0] - 2026-06-14
 
 ### Added

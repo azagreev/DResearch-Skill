@@ -2,7 +2,7 @@
 
 ## Deep Research Skill | Multi-Agent Orchestration Layer
 
-> **Version:** 1.4.0
+> **Version:** 1.5.0
 > **Scope:** Heartbeat, checkpoints, quality gates, cost tracking, error recovery, multi-agent coordination
 > **Philosophy:** *Every agent reports, every gate validates, every failure recovers*
 > **Status:** Testing release
@@ -1684,9 +1684,10 @@ The table below documents the invariants the engine enforces to prevent recurrin
 | 4 | citations_verified gate | `target_phase >= 5` (synthesis/output) is blocked until `citations_verified == True`. | `state.gate_blocks_transition`, gate enforcement tests |
 | 5 | sources_screened gate | `target_phase >= 2` (processing) is blocked when `sources_screened == 0`. | `state.gate_blocks_transition`, gate enforcement tests |
 | 6 | trust fence | Retrieved web content is UNTRUSTED data; embedded instructions are ignored. Enforced at `ingest.source_from_raw` via `TrustLevel`. | `engine/ingest.py`, `test_phase8.py` |
-| 7 | veto is absolute | A vetoed source cannot be promoted by composite arithmetic: `composite = 0.0`, `tier = D`. | `score.disqualify`, `test_phase14.py` |
+| 7 | ~~veto is absolute~~ (removed v1.5) | The anti-fit veto layer was removed in v1.5 as inert (it fired only on `.example` placeholder hosts + 2 self-declaring phrases). Source authority is composite-only; prompt-injection defense stays in the trust fence (inv #6). | n/a — see CHANGELOG [1.5.0] / inv #10 |
 | 8 | rescore is idempotent | A second rescore over the same snapshot + rules yields an empty diff; cached components are not zeroed before re-scoring. | `state.rescore_snapshot`, `test_phase14.py` |
-| **9** | **built but unreachable = dead integration** | **Every curated capability MUST have a CLI subparser-choice AND be exercised end-to-end. A capability that passes unit tests but has no CLI verb and/or is never called in `run_pipeline` is treated as unintegrated and does not count toward the acceptance bar.** | **`tests/test_phase15_reachability.py`** — asserts that each of `verify`, `plan`, `gate` appears in `cli.build_parser()` choices, and that `run_pipeline` calls the verify step and populates `snapshot.trace` and `claim.metadata["disagreement"]` / `["reverified_category"]`. |
+| **9** | **built but unreachable = dead integration** | **Every curated capability MUST have a CLI subparser-choice AND be exercised end-to-end. A capability that passes unit tests but has no CLI verb and/or is never called in `run_pipeline` is treated as unintegrated and does not count toward the acceptance bar.** | **`tests/test_phase15_reachability.py`** — asserts that each of `verify`, `plan`, `gate` appears in `cli.build_parser()` choices, and that `run_pipeline` populates `snapshot.trace`. (The in-pipeline auto-verify writing `claim.metadata["disagreement"]` was removed in v1.5 as inert — inv #10; the `verify` capability remains reachable via its CLI verb.) |
+| **10** | **shipped ≠ valuable** | **A curated capability that moves no measured metric — neither a benchmark score (DRACO) nor a trust metric — is a cut candidate, not a keep. A simplification cut is accepted only when the trust scorecard is byte-identical before/after (removed dead code, not value).** | **`bench/trust/` scorecard** (determinism / unsupported-claim suppression recall+precision / citation completeness / checkpoint fidelity); `docs/SKILL_VALUE_AND_SIMPLIFICATION.md`, CHANGELOG [1.5.0]. |
 
 > **Why invariant #9 matters:** Phase 15 root-causes the pattern where capabilities are fully unit-tested (green) but silently dormant in production because neither the CLI nor `run_pipeline` ever invokes them. The acceptance bar shifts from "unit-test passes" to "reachable end-to-end": a CLI subparser entry-point PLUS a call site in `run_pipeline` (or explicit delegation from `engine run`).
 

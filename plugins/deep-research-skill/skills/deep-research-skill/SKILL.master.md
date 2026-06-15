@@ -1,6 +1,6 @@
 ---
 name: deep-research-master
-version: "1.4.0"
+version: "1.5.0"
 runtime: multi-platform
 requires_connector: true
 categories: [research, analysis, web-scraping, synthesis, verification]
@@ -16,7 +16,7 @@ description: >
 
 # SKILL.master.md — Deep Research Skill: Полная Мастер-Документация
 
-> **Версия:** 1.4.0 | **Дата:** 2026-06-14 | **Статус:** Testing release
+> **Версия:** 1.5.0 | **Дата:** 2026-06-15 | **Статус:** Testing release
 >
 > Этот документ — единый источник truth (SSOT) для всех компонентов Deep Research Skill.
 > Он объединяет результаты 17 исследовательских работ, проведённых в январе-июне 2025/2026.
