@@ -1,10 +1,11 @@
 """Phase 15 unit tests — run_pipeline wiring (AC15-5).
 
-Exercises the three reachability additions inside engine.pipeline.run_pipeline:
+Exercises the reachability additions inside engine.pipeline.run_pipeline:
   1. auto-trace      — one event per stage, in order, on snapshot.trace
   2. gate-consult    — snapshot.next_phase is the highest non-blocked target,
                        snapshot.last_gate carries the reason (None on a clean run)
-  3. auto-verify     — each claim's metadata gets disagreement + reverified_category
+(The in-pipeline auto-verify was removed in v1.5 — never rendered, constant-False
+on hint-less runs; on-demand re-derivation stays in the `verify` CLI verb.)
 
 Conventions mirror tests/test_phase11.py: stdlib unittest, a fixed NOW (no
 clock/random), absolute-import the engine package.
@@ -28,7 +29,7 @@ from engine.pipeline import run_pipeline
 
 NOW = "2026-06-30T00:00:00Z"
 
-_STAGE_ORDER = ["ingest", "score", "factcheck", "verify", "cluster", "build"]
+_STAGE_ORDER = ["ingest", "score", "factcheck", "cluster", "build"]
 
 
 def _task_frame() -> TaskFrame:
@@ -63,18 +64,6 @@ class CleanRunTest(unittest.TestCase):
         self.assertTrue(snap.citations_verified)
         self.assertTrue(snap.extraction_table_complete)
 
-    def test_clean_run_no_disagreement(self):
-        snap, _ = self._run_clean()
-        for claim in snap.claims:
-            self.assertIn("disagreement", claim.metadata)
-            self.assertIn("reverified_category", claim.metadata)
-            self.assertFalse(claim.metadata["disagreement"])
-            # VERIFIED on supported evidence; value is the enum .value string.
-            self.assertEqual(
-                claim.metadata["reverified_category"], ClaimCategory.VERIFIED.value
-            )
-            self.assertIsInstance(claim.metadata["reverified_category"], str)
-
     def test_trace_non_empty_in_stage_order(self):
         snap, _ = self._run_clean()
         self.assertTrue(snap.trace)  # non-empty
@@ -106,34 +95,6 @@ class GateBlockedRunTest(unittest.TestCase):
         self.assertEqual(snap.next_phase, 1)
         self.assertEqual(snap.last_gate.verdict, GateVerdict.FAIL)
         self.assertIsNotNone(snap.last_gate.reason)
-
-
-class AutoVerifyDisagreementTest(unittest.TestCase):
-    def test_model_category_hint_flags_disagreement(self):
-        # A SUPPORTED claim with a model hint of OPINION: factcheck HONORS the
-        # hint (supported + INCOMPLETE/OPINION/OUTDATED -> hint wins), so the
-        # recorded category becomes OPINION. The independent verifier passes no
-        # hint, so it re-derives VERIFIED from the same evidence -> the recorded
-        # OPINION != re-derived VERIFIED -> metadata["disagreement"] True. This
-        # is the exact independence axis the verifier exists to surface, and the
-        # only one reachable through run_pipeline (factcheck + verify share
-        # classify_claim, so absent a hint they always agree). Non-vacuous: drop
-        # the hint and disagreement would be False (covered by the clean run).
-        claims = [Claim(id="C1", text="supported claim", sources=["S1"])]
-        snap, _ = run_pipeline(
-            "run4",
-            _task_frame(),
-            _raw_sources(),
-            claims,
-            NOW,
-            model_categories={"C1": ClaimCategory.OPINION},
-        )
-        claim = snap.claims[0]
-        self.assertEqual(claim.category, ClaimCategory.OPINION)  # hint honored
-        self.assertTrue(claim.metadata["disagreement"])
-        self.assertEqual(
-            claim.metadata["reverified_category"], ClaimCategory.VERIFIED.value
-        )
 
 
 class DeterminismTest(unittest.TestCase):

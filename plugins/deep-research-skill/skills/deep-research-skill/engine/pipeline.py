@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from . import factcheck, score, state, verify
+from . import factcheck, score, state
 from .cluster import cluster_claims
 from .ingest import ingest_sources
 from .model import (
@@ -106,23 +106,10 @@ def run_pipeline(
     factcheck.factcheck_claims(claims, sources, now_utc, model_categories=model_categories)
     trace.append("factcheck", ts=now_utc)
 
-    # AC15-5 auto-verify: independently re-derive each claim's category from the
-    # evidence (verify ignores verdict_explanation — independence preserved) and
-    # record the result + disagreement flag on the claim's metadata. Done AFTER
-    # factcheck so claim.category reflects the finalized verdict being checked.
-    # SCOPE NOTE: factcheck and verify share classify_claim, so on a hint-less run
-    # they agree by construction and `disagreement` is always False. The flag only
-    # fires when a `model_categories` hint was *honored* by factcheck but diverges
-    # from the pure-evidence re-derivation — i.e. it catches an honored author/model
-    # semantic override, NOT general evidence-vs-recorded drift. Broader drift
-    # detection (e.g. perturbation-based reverify) is a deliberate future follow-up.
-    for claim in claims:
-        # Re-derive once; disagreement is just `reverified != claim.category`,
-        # so calling verify.disagreement separately would re-run reverify_claim.
-        reverified = verify.reverify_claim(claim, sources, now_utc)
-        claim.metadata["disagreement"] = reverified != claim.category
-        claim.metadata["reverified_category"] = reverified.value
-    trace.append("verify", ts=now_utc)
+    # NOTE: the in-pipeline auto-verify (per-claim reverify_claim writing
+    # claim.metadata["disagreement"]) was removed in v1.5 — it was never rendered
+    # in the report and was constant-False on the common hint-less run. Standalone
+    # independent re-derivation remains available on demand via the `verify` CLI verb.
 
     clusters = cluster_claims(claims)
     trace.append("cluster", ts=now_utc)
