@@ -169,16 +169,14 @@ class PipelineE2EReachabilityTest(unittest.TestCase):
 
     def test_claims_carry_metadata_field(self):
         snap = self._run_pipeline()
-        # Every claim exposes a metadata dict (frozen contract). Once B's
-        # auto-verify lands, it carries "disagreement"/"reverified_category";
-        # until then the field still exists and is a dict — tolerate empty.
+        # Every claim exposes a metadata dict (frozen contract). The v1.5
+        # simplification removed the in-pipeline auto-verify (inert: never
+        # rendered, constant-False on hint-less runs), so run_pipeline now
+        # leaves metadata empty. On-demand re-derivation stays in `engine verify`.
         self.assertTrue(snap.claims)
         for claim in snap.claims:
             self.assertIsInstance(claim.metadata, dict)
-            if claim.metadata:
-                # If populated by B's auto-verify, the contract keys are present.
-                self.assertIn("disagreement", claim.metadata)
-                self.assertIn("reverified_category", claim.metadata)
+            self.assertEqual(claim.metadata, {})
 
     def test_trace_present_or_tolerated(self):
         snap = self._run_pipeline()

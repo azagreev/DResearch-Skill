@@ -203,8 +203,9 @@ class ScoreComponents:
     `breakdown` is an auditable score trace: an ordered list of
     [label, contribution] pairs (contribution = weight * component value) whose
     sum equals `composite`. Filled by score.py (Phase 14). Empty until scored.
-    `disqualifiers` holds the anti-fit veto reasons that forced this source to
-    composite=0 / tier=D (sorted, empty when not vetoed).
+    `disqualifiers` is retained for checkpoint backward-compat — the anti-fit veto
+    layer was removed in v1.5, so scoring always leaves it empty. Old checkpoints
+    that carry veto reasons still round-trip.
     """
     authority: Optional[float] = None
     recency: Optional[float] = None

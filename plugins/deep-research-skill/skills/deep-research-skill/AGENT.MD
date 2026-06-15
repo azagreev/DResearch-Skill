@@ -536,18 +536,13 @@ class GateCostTracker:
         return log_line
 ```
 
-### 3.5 Authority Scoring: VETO + Breakdown (Phase 14)
+### 3.5 Authority Scoring: Breakdown (Phase 14; VETO removed in v1.5)
 
-Phase 14 extends the scoring pipeline (`engine/score.py`) with two auditable mechanisms. Both are reflected in every scored `Source.scores` object and serialized into the checkpoint `state` block (version "1.2").
+Phase 14 extended the scoring pipeline (`engine/score.py`) with an auditable per-source breakdown, reflected in every scored `Source.scores` object and serialized into the checkpoint `state` block.
 
-#### Anti-fit VETO layer
+#### Anti-fit VETO layer — removed in v1.5
 
-Before computing the composite score, `disqualify(source, rules)` is called with a `VetoRules` object. A source is vetoed — forced to `composite = 0.0`, `tier = D` — if:
-
-- Its lowercased host exactly matches any domain in `rules.domains` (e.g. known content farms, injection hosts).
-- A pattern in `rules.patterns` matches (case-insensitive substring or regex) the concatenation of the source's title, extract snippet, and URL — covering markers such as `"retracted"`, `"sponsored by"`, or `"ignore previous instructions"` (prompt-injection guard).
-
-Matched reasons are stored **sorted** in `source.scores.disqualifiers` (e.g. `["domain:spamblog.example", "pattern:retracted"]`). An empty list means no veto. A vetoed source cannot be promoted back by the composite arithmetic — the veto is absolute.
+Phase 14 also shipped an anti-fit veto (`disqualify` + `VetoRules` / `DEFAULT_VETO`) that forced matching sources to `composite = 0.0` / `tier = D`. It was **removed in v1.5** as inert — its seed rules matched only a few `.example` test hosts and two self-declaring phrases, moving no DRACO score and no trust metric (invariant #10 «shipped ≠ valuable»). `score_source` no longer accepts a `VetoRules` argument; prompt-injection defense is provided by the ingest trust-fence (Phase 8), not the veto. The `source.scores.disqualifiers` field is retained for checkpoint back-compat and is now always empty (old checkpoints with legacy reasons still round-trip).
 
 #### Score breakdown
 
@@ -1457,10 +1452,10 @@ for recovery — the heartbeat is only a hint.
 **Version notes for §8.0 state block:**
 - `"checkpoint_version": "1.3"` — current version (Phase 15). Older checkpoints (1.0, 1.1, 1.2) migrate automatically: new fields default gracefully on load; the version field is re-stamped to "1.3" on save.
 - `"last_gate".reason` — added in v1.3. `null` on PASS; a non-null string on WARN/FAIL carries the blocking reason from `gate_blocks_transition`. Required for the `engine gate` verb output.
-- `"claims[].metadata"` — added in v1.3. `run_pipeline` auto-populates `metadata["disagreement"]` (bool: True when `verify.reverify_claim` returns a different category than `claim.category`) and `metadata["reverified_category"]` (the re-derived `ClaimCategory` .value string). An empty dict `{}` means the claim has not yet passed through the auto-verify step. **Scope note:** in `run_pipeline`, factcheck and verify share `classify_claim`, so on a hint-less run they agree and `disagreement` is always False; the in-pipeline flag only fires when a `model_categories` hint was *honored* by factcheck yet diverges from the pure-evidence re-derivation. The standalone `engine verify` verb (which runs against whatever category a snapshot already carries) is the path that detects general recorded-vs-evidence drift.
-- `"trace"` — added in v1.3. `snapshot.trace` is the serialized form of `RunTrace.as_list()`: a list of `{event, ts}` dicts, one appended per pipeline stage by `run_pipeline`. Stages, in order: `ingest`, `score`, `factcheck`, `verify` (new in Phase 15), `cluster`, `build`. An empty list means the snapshot was loaded from a pre-Phase 15 checkpoint or built without `run_pipeline`.
+- `"claims[].metadata"` — added in v1.3. An open per-claim annotation dict. The in-pipeline auto-verify that stamped `metadata["disagreement"]` / `["reverified_category"]` was removed in v1.5 (never rendered, constant-False on hint-less runs), so `run_pipeline` now leaves it empty `{}`. The standalone `engine verify` verb still emits those fields on demand — it re-derives each claim's category from evidence and reports recorded-vs-evidence drift.
+- `"trace"` — added in v1.3. `snapshot.trace` is the serialized form of `RunTrace.as_list()`: a list of `{event, ts}` dicts, one appended per pipeline stage by `run_pipeline`. Stages, in order: `ingest`, `score`, `factcheck`, `cluster`, `build` (the `verify` stage was dropped in v1.5 with the in-pipeline auto-verify). An empty list means the snapshot was loaded from a pre-Phase 15 checkpoint or built without `run_pipeline`.
 - `sources[].scores.breakdown` — list of `[label, contribution]` pairs (contributions sum to `composite`). Present after Phase 3 scoring; empty `[]` before.
-- `sources[].scores.disqualifiers` — sorted list of veto reasons (e.g. `["domain:spamblog.example"]`). Empty when not vetoed. A non-empty list means `composite` was forced to 0 and `tier` to D regardless of component values.
+- `sources[].scores.disqualifiers` — retained for checkpoint backward-compat (the anti-fit veto layer was removed in v1.5). Scoring always leaves it empty `[]`; only old checkpoints may carry legacy veto reasons.
 
 **Write rule.** Emit a checkpoint at every gate boundary (post-collection → `cp_01_raw`, post-processing
 → `cp_02_processed`, post-analysis → `cp_03_draft`, post-synthesis → `cp_04_reviewed`, final), plus on
@@ -1623,7 +1618,7 @@ JSON-in (via `--input` or stdin): `{ "snapshot": <Snapshot dict, CHECKPOINT_VERS
 **Behavioral guarantees:**
 - Deterministic & idempotent: same input + rules → byte-identical output; a second rescore yields an empty diff.
 - Read-only over collected sources: no network, no re-fetch; enforced by `assert_sources_readonly`.
-- VETO: `DEFAULT_VETO` is re-applied (same as the collect-time pipeline). It is not customizable via the CLI; inject a custom `VetoRules` at the library level if needed.
+- No veto: the anti-fit veto layer was removed in v1.5; rescore derives tiers from the composite arithmetic alone, and `source.scores.disqualifiers` stays empty.
 
 **Flags.** `--shallow` skips **factcheck + clustering** only (NOT recency) — categories/verdicts are then stale relative to the new tiers and a warning is emitted (carried onto the `--report` Markdown too). `--report` emits Markdown instead of JSON (`--mode findings|debunk|mixed`). `--out PATH` also writes the rescored snapshot JSON to `PATH`.
 
@@ -1642,7 +1637,7 @@ python -m engine memory --op list-feedback   [--db PATH] [--kind K] [--run-id R]
 
 **`list-feedback`:** Returns `{ "feedback": [ {id, run_id, item_id, kind, engine_value, human_value, trace_json, recorded_utc}, … ] }`, ordered oldest-first (by `id`); optional `--kind` / `--run-id` filters.
 
-**NOT auto-consumed by scoring.** The ledger is an audit/calibration trail, never a scoring input: `rescore`, `score`, and the pipeline never read the `feedback` table. Verdicts are acted on explicitly (e.g. by adding a domain to a `VetoRules` at the library level) — the engine never silently alters scores from logged feedback.
+**NOT auto-consumed by scoring.** The ledger is an audit/calibration trail, never a scoring input: `rescore`, `score`, and the pipeline never read the `feedback` table. Verdicts are acted on explicitly by a human (e.g. dropping a source from the collected set before a rescore) — the engine never silently alters scores from logged feedback.
 
 ### 9.3 New `next_valid_actions` escalation tokens
 
@@ -1765,13 +1760,9 @@ Each key is `null` when the check passes. Non-null values:
 
 ### 10.3 run_pipeline Phase 15 additions
 
-`pipeline.run_pipeline` is extended in Phase 15 with two new behaviors:
+`pipeline.run_pipeline` (Phase 15, trimmed in v1.5):
 
-**Auto-verify step.** After `factcheck.factcheck_claims` and before `cluster_claims`, `run_pipeline` calls `verify.reverify_claim` for each claim and stamps:
-- `claim.metadata["disagreement"]` — `True` if the re-derived category differs from `claim.category`, `False` otherwise.
-- `claim.metadata["reverified_category"]` — the re-derived `ClaimCategory` .value string (e.g. `"verified"`).
-
-**Trace population.** `run_pipeline` creates a `RunTrace` instance and appends one `{event, ts}` dict per stage, in order: `ingest`, `score`, `factcheck`, `verify`, `cluster`, `build` (`ts` is the passed-in `now_utc`, never a clock read). At the end, `snapshot.trace = trace.as_list()` serializes the run log into the snapshot for checkpoint persistence and `engine gate`/`engine report` inspection.
+**Trace population.** `run_pipeline` creates a `RunTrace` instance and appends one `{event, ts}` dict per stage, in order: `ingest`, `score`, `factcheck`, `cluster`, `build` (`ts` is the passed-in `now_utc`, never a clock read). The Phase-15 in-pipeline auto-verify that also stamped `claim.metadata["disagreement"]` / `["reverified_category"]` was removed in v1.5 as inert (never rendered, constant-False on hint-less runs); on-demand independent re-derivation stays in the `engine verify` verb. At the end, `snapshot.trace = trace.as_list()` serializes the run log into the snapshot for checkpoint persistence and `engine gate`/`engine report` inspection.
 
 **Gate consultation.** `run_pipeline` no longer hardcodes `next_phase=5`. After `build_snapshot` and after the gate-signal fields are set, it computes `snapshot.next_phase` as the highest phase `p∈{1..5}` for which `state.gate_blocks_transition(snapshot, p)` returns `None`, and records `snapshot.last_gate` (with `reason`). This means the pipeline reflects the blocked/unblocked state of the transition rather than always writing phase 5.
 

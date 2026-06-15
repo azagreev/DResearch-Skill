@@ -17,7 +17,6 @@ import unittest
 
 from engine.model import (
     Claim,
-    ClaimCategory,
     Depth,
     GateVerdict,
     Route,
