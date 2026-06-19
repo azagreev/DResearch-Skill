@@ -33,3 +33,9 @@ __pycache__/
 # Node (if tooling is added later)
 node_modules/
 npm-debug.log*
+
+# Skill packaging build artifacts (scripts/build_skill.py)
+.build/
+dist/
+*.zip
+*.skill

@@ -62,14 +62,17 @@
 - **Claude Code (CLI):** `/plugin marketplace update deep-research-skill` → обнови плагин → `/reload-plugins` (или перезапусти сессию).
 - **Cowork (GUI):** Customize → `deep-research-skill` → **удали и добавь заново** (`+` → Add marketplace from GitHub → `azagreev/DResearch-Skill`) — форсит свежий клон.
 
-### Claude.ai (ZIP-скилл)
+### Claude.ai / Claude Desktop (ZIP-скилл)
 
-Навык self-contained, поэтому его можно загрузить и в Claude.ai как обычный скилл:
+Навык self-contained — его можно загрузить напрямую, **минуя маркетплейс**. Это рекомендуется, если нужно обойти и предупреждение о доверии к стороннему маркетплейсу, и запаздывание версии в кэше маркетплейса (ZIP всегда — текущий билд).
 
-1. Заархивируй папку скилла `plugins/deep-research-skill/skills/deep-research-skill/` в ZIP (в корне архива должны лежать `SKILL.md` и `references/`).
+1. Скачай готовый ZIP из [релизов](https://github.com/azagreev/DResearch-Skill/releases/latest) — ассет `deep-research-skill-vX.Y.Z.zip`. В архиве **корневая папка** `deep-research-skill/` с `SKILL.md` внутри — именно эту структуру требует загрузка скилла в приложениях Claude (не файлы россыпью в корне архива).
+   - Либо собери локально: `python scripts/build_skill.py` → `dist/deep-research-skill-vX.Y.Z.zip` (build-скрипт исключает `tests/`/`evals/`/кэши и нормализует переводы строк; критерии корректной сборки — `python -m pytest tests/release/test_skill_package.py -q`).
 2. Claude → Настройки → Возможности → включи «Code execution and file creation».
 3. Настроить → Скиллы → **+** → загрузи ZIP.
 4. В любом чате попроси «проведи исследование …» — навык активируется.
+
+> **Про предупреждение «Plugins installed from marketplaces are not controlled by Anthropic…».** Это штатное предупреждение Anthropic для **любого** стороннего marketplace-плагина — оно привязано к *маршруту установки из маркетплейса*, а не к содержимому скилла, и не является ошибкой. При установке из маркетплейса просто подтверди доверие; прямая загрузка ZIP этого шага не требует.
 
 ---
 
