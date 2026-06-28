@@ -307,5 +307,25 @@ class PerAxisOmissionTest(unittest.TestCase):
         self.assertEqual(d["overall"], 1.0)
 
 
+class CliVerdictCoercionTest(unittest.TestCase):
+    """The `grade --verdicts` path must preserve JSON null as None (unjudged),
+    not coerce it to False. Regression for the bool(None)->False bug."""
+
+    def test_json_null_preserved_as_unjudged(self):
+        from bench.quality.__main__ import _coerce_verdicts
+
+        coerced = _coerce_verdicts({"fa1": None, "fa2": True, "cit1": False})
+        self.assertIsNone(coerced["fa1"])          # null -> None, NOT False
+        self.assertIs(coerced["fa2"], True)
+        self.assertIs(coerced["cit1"], False)
+
+        # A null verdict must land in `unjudged`, never scored as "not met".
+        d = grade(coerced).as_dict()
+        ids = {q["id"]: q["verdict"] for q in d["questions"]}
+        self.assertIsNone(ids["fa1"])
+        self.assertEqual(d["coverage"]["unjudged"],
+                         sum(1 for v in ids.values() if v is None))
+
+
 if __name__ == "__main__":
     unittest.main()

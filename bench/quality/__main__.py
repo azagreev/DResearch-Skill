@@ -65,6 +65,16 @@ def _cmd_demo(args: argparse.Namespace) -> int:  # noqa: ARG001
     return 0
 
 
+def _coerce_verdicts(raw: dict) -> dict:
+    """Map a raw JSON verdicts object to {id: True|False|None}.
+
+    JSON ``null`` -> ``None`` (unjudged, excluded from scoring); everything else
+    -> ``bool``. Preserving ``None`` matches grade()'s contract; ``bool(None)``
+    would wrongly score an unjudged question as "not met".
+    """
+    return {k: (None if v is None else bool(v)) for k, v in raw.items()}
+
+
 def _cmd_grade(args: argparse.Namespace) -> int:
     with open(args.verdicts, "r", encoding="utf-8") as fh:
         raw = json.load(fh)
@@ -74,9 +84,7 @@ def _cmd_grade(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
-    # Coerce values to bool (JSON true/false are already bool; guard strings)
-    verdicts = {k: bool(v) for k, v in raw.items()}
-    result = grade(verdicts)
+    result = grade(_coerce_verdicts(raw))
     print(json.dumps(result.as_dict(), indent=2, ensure_ascii=False))
     return 0
 
