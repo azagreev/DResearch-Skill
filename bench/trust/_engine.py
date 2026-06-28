@@ -26,6 +26,7 @@ from engine.model import (  # noqa: E402
     ClaimRole,
     Depth,
     Route,
+    Snapshot,
     TaskFrame,
     snapshot_from_dict,
     snapshot_to_dict,
@@ -33,6 +34,6 @@ from engine.model import (  # noqa: E402
 
 __all__ = [
     "pipeline", "report", "engine_eval",
-    "Claim", "ClaimRole", "Depth", "Route", "TaskFrame",
+    "Claim", "ClaimRole", "Depth", "Route", "Snapshot", "TaskFrame",
     "snapshot_from_dict", "snapshot_to_dict",
 ]

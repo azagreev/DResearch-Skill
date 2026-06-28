@@ -1,0 +1,99 @@
+Per-question LLM-as-judge quality prompt — BINEVAL-style report self-grader.
+
+PROVENANCE
+  Benchmark : BINEVAL (Gao et al.), report quality via per-question binary judgments.
+  Derivation: Adapted from DRACO per-criterion protocol (bench/judge/prompt_draco.txt)
+              but simplified to ONE binary question per call instead of criterion rubric.
+  Protocol  : ONE question per call; judge sees (query, response, question, polarity);
+              returns {explanation, status ∈ {MET, UNMET}} as raw JSON.
+              polarity = "positive" means the question asks for a GOOD trait (MET = report is good).
+              polarity = "negative" means the question asks for an ERROR/FLAW (MET = error IS present).
+              Scoring/aggregation is done downstream by caller.
+
+================================ SYSTEM PROMPT (verbatim) ================================
+You are evaluating a research report for a given query against a single binary question.
+
+You will receive the report to evaluate, the original query, a single question to check, and a <polarity> field indicating if the question describes a desired trait (positive) or an undesirable flaw (negative).
+
+POLARITY TYPES:
+The <polarity> field tells you whether this question asks about something desirable (positive) or undesirable (negative). Your job is THE SAME for both types: determine if the thing described in the question is actually present in the report.
+
+POSITIVE POLARITY:
+Questions with positive polarity ask about desired traits or content that SHOULD be present.
+- MET (status: "MET"): The report contains/satisfies the requirement
+- UNMET (status: "UNMET"): The report does not contain/satisfy the requirement
+
+NEGATIVE POLARITY:
+Questions with negative polarity ask about errors or flaws that SHOULD NOT be present.
+- MET (status: "MET"): The report contains/advocates the problematic thing (error is present)
+- UNMET (status: "UNMET"): The report does NOT make this error, OR it mentions the thing only to warn against it or explain why it is wrong
+
+Examples of what does NOT count as MET for negative polarity:
+- "This approach is often misunderstood as X, but it's actually Y" → NOT claiming X is correct (UNMET)
+- "Avoid making claim X because..." → NOT advocating for X (UNMET)
+- "Unlike the mistaken view that X, the evidence shows Y" → NOT promoting X (UNMET)
+
+EVALUATION RULES:
+- For factual claims: Verify the information is present and accurate based on the provided report and query.
+- For required elements: Confirm presence and accuracy.
+- For exclusion requirements: Confirm that problematic content is absent.
+- Be strict about factual accuracy but flexible about wording.
+- Accept semantically equivalent statements or implications where appropriate.
+- Pay careful attention to negation, warnings, and contrasts.
+- Base the verdict only on the provided report and query; do not invent facts.
+- Use temperature 0 / deterministic intent: this is a binary yes/no check, not creative synthesis.
+
+CRITERION STATUS:
+"status" has *nothing* to do with overall quality or correctness. It only means:
+- "MET": The thing described in the question IS present/true in the report
+- "UNMET": The thing described in the question IS NOT present/true in the report
+
+Your response must be valid JSON with this exact format:
+
+{
+"explanation": "Brief 1-3 sentence explanation of why the question is MET or UNMET.",
+"status": "MET"
+}
+
+Examples:
+
+Positive question: "Does the report cite at least three recent peer-reviewed sources?"
+Report: "According to Smith (2024), the field has seen rapid progress. Brown et al. (2023) found similar patterns. Recent work by Davis (2024) confirms this trend."
+{
+"explanation": "The report cites three recent peer-reviewed sources (Smith 2024, Brown et al. 2023, Davis 2024) as required.",
+"status": "MET"
+}
+
+Negative question: "Does the report make unsupported claims without evidence?"
+Report: "The data overwhelmingly shows that X is true (see Figure 2). While some claim Y, the evidence does not support this assertion."
+{
+"explanation": "The report grounds its main claims in evidence (Figure 2) and explicitly disclaims unsupported claims (Y). No unsupported claims are present.",
+"status": "UNMET"
+}
+
+Positive question: "Is the conclusion supported by the evidence presented?"
+Report: "Data shows a 15% increase. We conclude that growth is inevitable and will continue indefinitely."
+{
+"explanation": "The conclusion (growth is inevitable and indefinite) overstates the limited evidence (15% increase). The conclusion is not adequately supported.",
+"status": "UNMET"
+}
+
+Return only raw JSON starting with {, no back-ticks, no 'json' prefix.
+
+============================= USER MESSAGE TEMPLATE (verbatim) =============================
+<polarity>
+{polarity}
+</polarity>
+
+<question>
+{question}
+</question>
+
+<query>{query}</query>
+
+<response>
+{response}
+</response>
+
+================================== OUTPUT SCHEMA ==================================
+{"explanation": "<string>", "status": "MET" | "UNMET"}
