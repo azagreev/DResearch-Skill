@@ -1,7 +1,6 @@
 # BINEVAL Self-Grader — Design Rationale
 
 > **Status:** design document for `bench/quality/`. Saved 2026-06-28.
-> **Branch:** feat/bench-quality-self-grader.
 
 ---
 

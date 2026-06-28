@@ -33,21 +33,15 @@ from enum import Enum
 from typing import Callable, Dict, Optional, Tuple
 
 from bench.draco import AXES
+# `Snapshot` is the engine run-state record the deterministic checkers read.
+# All engine types come through the same bench bootstrap the trust layer uses
+# (bench.trust._engine puts the engine package on sys.path and re-exports them).
 from bench.trust._engine import (
     Claim,
     ClaimRole,
+    Snapshot,
     snapshot_to_dict,  # noqa: F401  (re-exported for downstream convenience)
 )
-
-# `Snapshot` is the engine run-state record the deterministic checkers read.
-# Imported via the same bench bootstrap the trust layer uses (bench.trust._engine
-# puts the engine package on sys.path). Downstream modules should import it the
-# same way: `from bench.trust._engine import Snapshot` once it is re-exported
-# there, else `from engine.model import Snapshot` after the bootstrap has run.
-try:  # pragma: no cover - exercised by whichever path is available
-    from bench.trust._engine import Snapshot  # type: ignore
-except ImportError:  # the bootstrap in _engine has already run on import above
-    from engine.model import Snapshot  # type: ignore
 
 
 # --------------------------------------------------------------------------- #
@@ -195,10 +189,12 @@ def _check_sources_tier_scored(snapshot: "Snapshot") -> Optional[bool]:
 
 
 def _check_claims_reference_real_sources(snapshot: "Snapshot") -> Optional[bool]:
-    """Gate 5.2 / auditability: every cited source id resolves to a real Source.
+    """Gate 5.2 / auditability: detect dangling citations (cit3, NEGATIVE polarity).
 
     A citation pointing at a non-existent source id is a dangling reference (an
-    un-auditable citation). Returns True when all references resolve.
+    un-auditable citation). cit3 is a NEGATIVE-polarity question, so the checker
+    returns True when the error IS present (a dangling reference exists) and
+    False when every cited id resolves to a real Source.
     """
     if not snapshot.claims:
         return None
@@ -206,8 +202,8 @@ def _check_claims_reference_real_sources(snapshot: "Snapshot") -> Optional[bool]
     for c in snapshot.claims:
         for sid in c.sources:
             if sid not in known:
-                return False
-    return True
+                return True  # dangling reference -> error present
+    return False  # all citations resolve -> error absent
 
 
 # --------------------------------------------------------------------------- #

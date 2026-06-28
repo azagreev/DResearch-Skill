@@ -251,7 +251,7 @@ def _aggregate(
     per_axis: Dict[str, float] = {}
     for axis in AXES:
         axis_rows = [r for r in rows if r.axis == axis]
-        scored = [(r, r.good_score()) for r in axis_rows if r.good_score() is not None]
+        scored = [(r, gs) for r in axis_rows if (gs := r.good_score()) is not None]
         if not scored:
             continue  # omit axes with 0 judged questions
         per_axis[axis] = sum(gs for _, gs in scored) / len(scored)
@@ -285,18 +285,16 @@ def _aggregate(
 # --------------------------------------------------------------------------- #
 # grade() — CLI / external-verdicts path
 # --------------------------------------------------------------------------- #
-def grade(verdicts: Mapping[str, bool]) -> "QualityScore":
+def grade(verdicts: Mapping[str, Optional[bool]]) -> "QualityScore":
     """Build a QualityScore from a bare verdicts mapping (no Snapshot needed).
 
-    This is the CLI ``grade --verdicts`` path: the caller supplies a complete
-    ``{question_id: True/False}`` dict (e.g. from a JSON file), and this
-    function wraps ``_aggregate`` with empty explanations.
-
-    Questions not present in *verdicts* are treated as unjudged (None).
+    This is the CLI ``grade --verdicts`` path: the caller supplies a
+    ``{question_id: True|False|None}`` dict (e.g. from a JSON file), and this
+    function wraps ``_aggregate`` with empty explanations. A ``None`` value, or a
+    question absent from *verdicts*, is treated as unjudged (excluded from both
+    the numerator and the denominator).
     """
-    # Cast to Optional[bool] to satisfy _aggregate's type signature.
-    opt_verdicts: Dict[str, Optional[bool]] = dict(verdicts)
-    return _aggregate(opt_verdicts, {})
+    return _aggregate(dict(verdicts), {})
 
 
 # --------------------------------------------------------------------------- #
