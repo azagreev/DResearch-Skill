@@ -28,7 +28,9 @@ jobs:
 
       - name: Engine suite (unittest; includes reachability + docs<->CLI + removed-symbol guards)
         working-directory: plugins/deep-research-skill/skills/deep-research-skill
-        run: python -m unittest discover tests
+        # -t . pins top_level_dir to the skill root so the `engine` package imports
+        # cleanly on the runner (not just via the python -m cwd insertion).
+        run: python -m unittest discover -s tests -t .
 
       - name: Bench suite (trust + quality; includes per-checker round-trip + boundary guards)
         env:

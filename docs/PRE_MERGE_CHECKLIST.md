@@ -10,7 +10,7 @@ the rest is judgement that CI cannot make.
 - [ ] **Debt-sweep first.** Read `docs/TECHDEBT.md`; close anything this change made cheap (mark
       the closing commit). Mirror open items in `CHANGELOG [x.y.z] → Deferred / Known gaps`.
 - [ ] **Suites green, 0 skipped** (CI runs all of this; run locally if unsure):
-      - engine: `cd plugins/deep-research-skill/skills/deep-research-skill && python -m unittest discover tests`
+      - engine: `cd plugins/deep-research-skill/skills/deep-research-skill && python -m unittest discover -s tests -t .`
       - bench: `PYTHONPATH=. python -m unittest discover -s bench/tests -t .`
 - [ ] **Determinism gate** — scorecards byte-identical across two runs:
       `PYTHONPATH=. python -m bench.trust` ×2 and `python -m bench.quality` ×2 → `diff` empty.

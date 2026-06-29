@@ -673,9 +673,9 @@ class CheckerTestCoverageMetaGuard(unittest.TestCase):
 class GradeCoercionBoundaryTest(unittest.TestCase):
     """Boundary coverage for bench.quality.__main__._coerce_verdicts.
 
-    CliVerdictCoercionTest covers the basic null->None regression.  This class
-    adds complementary boundary cases: true, false, missing keys, and
-    non-bool truthy/falsey values.  No overlap with the existing test.
+    CliVerdictCoercionTest covers the basic null->None regression end-to-end via
+    grade(); this class adds complementary boundary cases at the _coerce_verdicts
+    layer: true, false, missing keys, and non-bool truthy/falsey values.
     """
 
     def setUp(self):
