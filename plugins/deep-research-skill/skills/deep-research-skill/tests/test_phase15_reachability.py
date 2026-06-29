@@ -416,5 +416,64 @@ class DocsCliConsistencyTest(unittest.TestCase):
         self.assertEqual(_jsonin_violations(ok, self.handler_keys), [])
 
 
+# ---------------------------------------------------------------------------
+# Docs must not describe a REMOVED API as if it were active — the v1.5 stale-doc
+# class (PR #5 caught ~6 such passages: model.py disqualifiers docstring, AGENT.MD
+# §3.5/§8/§10.3, SKILL.md verify/VETO sections describing the cut veto/auto-verify
+# as live). Cheap line guard: a removed symbol may appear ONLY on a line that also
+# carries a removal marker (removed / deprecated / back-compat / ~~ / убран / …).
+# ---------------------------------------------------------------------------
+_REMOVED_DOC_FILES = ("AGENT.MD", "SKILL.md", "SKILL.master.md")
+
+# Symbols cleanly removed from the engine API in v1.5. `\b` on `disqualify`
+# deliberately avoids matching the KEPT `disqualifiers` back-compat field.
+_REMOVED_API = (
+    re.compile(r"\bVetoRules\b"),
+    re.compile(r"\bDEFAULT_VETO\b"),
+    re.compile(r"\bdisqualify\b"),
+)
+_REMOVAL_MARKERS = (
+    "removed", "deprecat", "no longer", "back-compat", "backward-compat",
+    "legacy", "inert", "~~", "cut as", "cut in", "убран", "удал",
+)
+
+
+def _active_removed_symbol_hits(text: str):
+    """[(lineno, symbol)] for a removed-API symbol on a line with NO removal marker."""
+    out = []
+    for n, line in enumerate(text.splitlines(), 1):
+        low = line.lower()
+        if any(mark in low for mark in _REMOVAL_MARKERS):
+            continue
+        for rx in _REMOVED_API:
+            m = rx.search(line)
+            if m:
+                out.append((n, m.group(0)))
+    return out
+
+
+class DocsNoActiveRemovedSymbolsTest(unittest.TestCase):
+    """A removed engine symbol (VetoRules / DEFAULT_VETO / disqualify) may be named
+    in the docs only in a removal / back-compat context — never as live API. Guards
+    the v1.5 stale-doc failure class so it fails CI, not a human reviewer."""
+
+    def test_docs_do_not_describe_removed_api_as_active(self):
+        bad = {}
+        for name in _REMOVED_DOC_FILES:
+            path = SKILL_DIR / name
+            if not path.exists():
+                continue
+            hits = _active_removed_symbol_hits(path.read_text(encoding="utf-8"))
+            if hits:
+                bad[name] = hits
+        self.assertEqual(bad, {}, f"docs describe a removed symbol as active: {bad}")
+
+    def test_checker_is_non_vacuous(self):
+        active = "score_source is called with a VetoRules object first."
+        self.assertTrue(_active_removed_symbol_hits(active))  # must be flagged
+        note = "The VetoRules layer was removed in v1.5; disqualifiers stays empty."
+        self.assertEqual(_active_removed_symbol_hits(note), [])  # removal note allowed
+
+
 if __name__ == "__main__":
     unittest.main()

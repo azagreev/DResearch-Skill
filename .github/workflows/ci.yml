@@ -1,0 +1,51 @@
+name: CI
+
+# First CI for the repo. Converts the manual "did I remember to run the suites?"
+# step into an automatic gate on every push / PR — the meta-cause behind most of
+# the bug classes catalogued in docs/BUGLOG.md (roots A/B/D).
+#
+# Stdlib-only by design: no pip install, no third-party deps → fast and reproducible.
+# The reachability + docs<->CLI + removed-symbol guards live inside the engine suite
+# (tests/test_phase15_reachability.py); the per-checker round-trip + boundary guards
+# live in the bench suite (bench/tests/test_quality.py).
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Engine suite (unittest; includes reachability + docs<->CLI + removed-symbol guards)
+        working-directory: plugins/deep-research-skill/skills/deep-research-skill
+        run: python -m unittest discover tests
+
+      - name: Bench suite (trust + quality; includes per-checker round-trip + boundary guards)
+        env:
+          PYTHONPATH: .
+        run: python -m unittest discover -s bench/tests -t .
+
+      - name: Determinism gate (byte-identical re-runs of the scorecards)
+        env:
+          PYTHONPATH: .
+        run: |
+          set -euo pipefail
+          python -m bench.trust   > "$RUNNER_TEMP/trust1.json"
+          python -m bench.trust   > "$RUNNER_TEMP/trust2.json"
+          diff "$RUNNER_TEMP/trust1.json" "$RUNNER_TEMP/trust2.json"
+          python -m bench.quality > "$RUNNER_TEMP/q1.json"
+          python -m bench.quality > "$RUNNER_TEMP/q2.json"
+          diff "$RUNNER_TEMP/q1.json" "$RUNNER_TEMP/q2.json"
+
+      - name: Golden-corpus regression (engine.eval metrics vs thresholds)
+        run: python plugins/deep-research-skill/skills/deep-research-skill/evals/ci_regression.py

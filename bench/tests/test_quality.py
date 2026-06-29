@@ -327,5 +327,416 @@ class CliVerdictCoercionTest(unittest.TestCase):
                          sum(1 for v in ids.values() if v is None))
 
 
+# ---------------------------------------------------------------------------
+# Module-level set used by CheckerTestCoverageMetaGuard (defined before the
+# test class so the guard itself can reference it as a plain name).
+# ---------------------------------------------------------------------------
+_TESTED_CHECKERS: frozenset = frozenset({
+    "fa2",
+    "fa3",
+    "dep3",
+    "dep4",
+    "pres1",
+    "cit1",
+    "cit2",
+    "cit3",
+})
+
+
+class DeterministicCheckerRoundTripTest(unittest.TestCase):
+    """Standing guard for every deterministic checker's snapshot->verdict mapping.
+
+    Each checker is exercised with:
+      (a) a snapshot where the checked condition IS present / property IS met,
+      (b) a snapshot where it is NOT,
+      (c) an empty / not-applicable snapshot that should yield None.
+
+    For NEGATIVE-polarity checkers, "condition present" returns True; for
+    POSITIVE-polarity checkers, "property met" returns True.  The cit3 cases
+    are the critical regression guard against the polarity-inversion bug (#12).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        # Import engine types after bench.trust._engine has put the engine on
+        # sys.path (questions.py does the same bootstrap at import time).
+        import copy
+        from bench.trust._engine import Snapshot, Claim, ClaimRole
+        from engine.model import Source, Tier, ClaimCategory
+
+        cls._copy = copy
+        cls._Snapshot = Snapshot
+        cls._Claim = Claim
+        cls._ClaimRole = ClaimRole
+        cls._Source = Source
+        cls._Tier = Tier
+        cls._ClaimCategory = ClaimCategory
+
+        # Build a base snapshot from the demo scenario (runs the real pipeline
+        # once; all 8 checkers return non-None on this snapshot).
+        cls._base_snapshot, _ = demo_scenario().run()
+
+    # ------------------------------------------------------------------
+    # Helper: fresh deep-copy of the demo snapshot with all claims/sources.
+    # ------------------------------------------------------------------
+    def _snap(self):
+        return self._copy.deepcopy(self._base_snapshot)
+
+    # ------------------------------------------------------------------
+    # fa2: NEGATIVE — True iff an OWN finding has category "false"
+    # ------------------------------------------------------------------
+    def test_fa2_error_present(self):
+        """fa2 returns True when >=1 own finding is categorized FALSE."""
+        from bench.quality.questions import _check_no_false_own_finding
+        snap = self._snap()
+        # Force the first own finding to FALSE category.
+        own = [c for c in snap.claims if c.role == self._ClaimRole.OWN_FINDING]
+        self.assertTrue(own, "demo snapshot must have own findings")
+        own[0].category = self._ClaimCategory.FALSE
+        self.assertIs(_check_no_false_own_finding(snap), True)
+
+    def test_fa2_error_absent(self):
+        """fa2 returns False when no own finding is FALSE."""
+        from bench.quality.questions import _check_no_false_own_finding
+        snap = self._snap()
+        own = [c for c in snap.claims if c.role == self._ClaimRole.OWN_FINDING]
+        self.assertTrue(own)
+        for c in own:
+            c.category = self._ClaimCategory.VERIFIED  # clean
+        self.assertIs(_check_no_false_own_finding(snap), False)
+
+    def test_fa2_none_on_empty(self):
+        """fa2 returns None when there are no own findings at all."""
+        from bench.quality.questions import _check_no_false_own_finding
+        snap = self._snap()
+        snap.claims = []
+        self.assertIsNone(_check_no_false_own_finding(snap))
+
+    # ------------------------------------------------------------------
+    # fa3: NEGATIVE — True iff a reportable finding has category "unverified"
+    # ------------------------------------------------------------------
+    def test_fa3_error_present(self):
+        """fa3 returns True when a cited own finding is UNVERIFIED."""
+        from bench.quality.questions import _check_unverified_in_findings
+        snap = self._snap()
+        # Pick a reportable finding (must have >=1 source).
+        reportable = [
+            c for c in snap.claims
+            if c.role == self._ClaimRole.OWN_FINDING and len(c.sources) >= 1
+        ]
+        self.assertTrue(reportable, "demo snapshot must have reportable findings")
+        reportable[0].category = self._ClaimCategory.UNVERIFIED
+        self.assertIs(_check_unverified_in_findings(snap), True)
+
+    def test_fa3_error_absent(self):
+        """fa3 returns False when no reportable finding is UNVERIFIED."""
+        from bench.quality.questions import _check_unverified_in_findings
+        snap = self._snap()
+        for c in snap.claims:
+            if c.role == self._ClaimRole.OWN_FINDING and len(c.sources) >= 1:
+                c.category = self._ClaimCategory.VERIFIED
+        self.assertIs(_check_unverified_in_findings(snap), False)
+
+    def test_fa3_none_on_no_reportable(self):
+        """fa3 returns None when there are no reportable (cited) own findings."""
+        from bench.quality.questions import _check_unverified_in_findings
+        snap = self._snap()
+        # Remove all source citations from own findings so none are reportable.
+        for c in snap.claims:
+            if c.role == self._ClaimRole.OWN_FINDING:
+                c.sources = []
+        self.assertIsNone(_check_unverified_in_findings(snap))
+
+    # ------------------------------------------------------------------
+    # dep3: POSITIVE — True iff >=4 distinct source tiers present
+    # ------------------------------------------------------------------
+    def test_dep3_property_met(self):
+        """dep3 returns True when >=4 distinct tiers are present."""
+        from bench.quality.questions import _check_source_type_diversity
+        snap = self._snap()
+        # Add sources with 4 distinct tiers (S, A, B, C).
+        for tier, sid in [
+            (self._Tier.S, "X1"),
+            (self._Tier.A, "X2"),
+            (self._Tier.B, "X3"),
+            (self._Tier.C, "X4"),
+        ]:
+            snap.sources.append(
+                self._Source(id=sid, url=f"https://example.com/{sid}", tier=tier)
+            )
+        self.assertIs(_check_source_type_diversity(snap), True)
+
+    def test_dep3_property_unmet(self):
+        """dep3 returns False when fewer than 4 distinct tiers are present."""
+        from bench.quality.questions import _check_source_type_diversity
+        snap = self._snap()
+        # Collapse all sources to a single tier.
+        for s in snap.sources:
+            s.tier = self._Tier.A
+        # Ensure fewer than 4 distinct tiers (only A).
+        self.assertIs(_check_source_type_diversity(snap), False)
+
+    def test_dep3_none_on_empty(self):
+        """dep3 returns None when there are no sources."""
+        from bench.quality.questions import _check_source_type_diversity
+        snap = self._snap()
+        snap.sources = []
+        self.assertIsNone(_check_source_type_diversity(snap))
+
+    # ------------------------------------------------------------------
+    # dep4: POSITIVE — True iff >=1 Tier S source present
+    # ------------------------------------------------------------------
+    def test_dep4_property_met(self):
+        """dep4 returns True when at least one Tier S source exists."""
+        from bench.quality.questions import _check_primary_source_present
+        snap = self._snap()
+        # Ensure there is at least one Tier S source.
+        snap.sources.append(
+            self._Source(id="PRIMXYZ", url="https://sec.gov/primary", tier=self._Tier.S)
+        )
+        self.assertIs(_check_primary_source_present(snap), True)
+
+    def test_dep4_property_unmet(self):
+        """dep4 returns False when no Tier S source exists."""
+        from bench.quality.questions import _check_primary_source_present
+        snap = self._snap()
+        for s in snap.sources:
+            s.tier = self._Tier.B  # downgrade all to non-primary
+        self.assertIs(_check_primary_source_present(snap), False)
+
+    def test_dep4_none_on_empty(self):
+        """dep4 returns None when there are no sources."""
+        from bench.quality.questions import _check_primary_source_present
+        snap = self._snap()
+        snap.sources = []
+        self.assertIsNone(_check_primary_source_present(snap))
+
+    # ------------------------------------------------------------------
+    # pres1: POSITIVE — True iff every claim confidence is in 1..5
+    # ------------------------------------------------------------------
+    def test_pres1_property_met(self):
+        """pres1 returns True when all claims have confidence in 1..5."""
+        from bench.quality.questions import _check_all_claims_confidence_scored
+        snap = self._snap()
+        for c in snap.claims:
+            c.confidence = 3  # valid
+        self.assertIs(_check_all_claims_confidence_scored(snap), True)
+
+    def test_pres1_property_unmet(self):
+        """pres1 returns False when any claim has confidence out of 1..5."""
+        from bench.quality.questions import _check_all_claims_confidence_scored
+        snap = self._snap()
+        self.assertTrue(snap.claims)
+        snap.claims[0].confidence = 0  # out-of-range
+        self.assertIs(_check_all_claims_confidence_scored(snap), False)
+
+    def test_pres1_none_on_empty(self):
+        """pres1 returns None when there are no claims at all."""
+        from bench.quality.questions import _check_all_claims_confidence_scored
+        snap = self._snap()
+        snap.claims = []
+        self.assertIsNone(_check_all_claims_confidence_scored(snap))
+
+    # ------------------------------------------------------------------
+    # cit1: POSITIVE — True iff every OWN finding has >=1 source
+    # ------------------------------------------------------------------
+    def test_cit1_property_met(self):
+        """cit1 returns True when every own finding has >=1 source."""
+        from bench.quality.questions import _check_all_findings_cited
+        snap = self._snap()
+        # Ensure every own finding cites at least one source.
+        src_id = snap.sources[0].id if snap.sources else "S1"
+        for c in snap.claims:
+            if c.role == self._ClaimRole.OWN_FINDING and not c.sources:
+                c.sources = [src_id]
+        self.assertIs(_check_all_findings_cited(snap), True)
+
+    def test_cit1_property_unmet(self):
+        """cit1 returns False when at least one own finding has no sources."""
+        from bench.quality.questions import _check_all_findings_cited
+        snap = self._snap()
+        own = [c for c in snap.claims if c.role == self._ClaimRole.OWN_FINDING]
+        self.assertTrue(own)
+        own[0].sources = []  # strip citations
+        self.assertIs(_check_all_findings_cited(snap), False)
+
+    def test_cit1_none_on_empty(self):
+        """cit1 returns None when there are no own findings."""
+        from bench.quality.questions import _check_all_findings_cited
+        snap = self._snap()
+        snap.claims = []
+        self.assertIsNone(_check_all_findings_cited(snap))
+
+    # ------------------------------------------------------------------
+    # cit2: POSITIVE — True iff every source has a non-None tier
+    # ------------------------------------------------------------------
+    def test_cit2_property_met(self):
+        """cit2 returns True when every source carries a tier."""
+        from bench.quality.questions import _check_sources_tier_scored
+        snap = self._snap()
+        for s in snap.sources:
+            s.tier = self._Tier.A  # all tiered
+        self.assertIs(_check_sources_tier_scored(snap), True)
+
+    def test_cit2_property_unmet(self):
+        """cit2 returns False when any source is missing a tier."""
+        from bench.quality.questions import _check_sources_tier_scored
+        snap = self._snap()
+        self.assertTrue(snap.sources)
+        snap.sources[0].tier = None  # un-tiered
+        self.assertIs(_check_sources_tier_scored(snap), False)
+
+    def test_cit2_none_on_empty(self):
+        """cit2 returns None when there are no sources."""
+        from bench.quality.questions import _check_sources_tier_scored
+        snap = self._snap()
+        snap.sources = []
+        self.assertIsNone(_check_sources_tier_scored(snap))
+
+    # ------------------------------------------------------------------
+    # cit3: NEGATIVE — True iff a claim cites a source id absent from snapshot
+    # This is the critical regression guard for bug #12 (polarity inversion).
+    # ------------------------------------------------------------------
+    def test_cit3_dangling_citation_returns_true(self):
+        """cit3 MUST return True when a dangling citation exists (error present).
+
+        This is the critical regression guard: if the polarity is ever inverted
+        (returning False for dangling / True for clean), this test fails
+        immediately, catching bug #12 before it ships.
+        """
+        from bench.quality.questions import _check_claims_reference_real_sources
+        snap = self._snap()
+        self.assertTrue(snap.claims, "fixture must have claims")
+        # Append a bogus source id that does not exist in snap.sources.
+        snap.claims[0].sources.append("NONEXISTENT_SOURCE_ID_XYZ")
+        result = _check_claims_reference_real_sources(snap)
+        self.assertIs(result, True,
+                      "dangling citation must return True (error IS present); "
+                      "got False — polarity is INVERTED (bug #12)")
+
+    def test_cit3_clean_citations_return_false(self):
+        """cit3 MUST return False when all citations resolve (error absent).
+
+        Complementary guard: a clean snapshot must score as error-absent (False),
+        not as error-present (True).
+        """
+        from bench.quality.questions import _check_claims_reference_real_sources
+        snap = self._snap()
+        known = {s.id for s in snap.sources}
+        # Verify all existing citations are clean (no dangling refs in demo).
+        for c in snap.claims:
+            for sid in c.sources:
+                self.assertIn(sid, known, f"demo snapshot has unexpected dangling ref: {sid}")
+        result = _check_claims_reference_real_sources(snap)
+        self.assertIs(result, False,
+                      "clean snapshot must return False (error IS absent); "
+                      "got True — polarity is INVERTED (bug #12)")
+
+    def test_cit3_none_on_empty_claims(self):
+        """cit3 returns None when there are no claims at all."""
+        from bench.quality.questions import _check_claims_reference_real_sources
+        snap = self._snap()
+        snap.claims = []
+        self.assertIsNone(_check_claims_reference_real_sources(snap))
+
+
+class CheckerTestCoverageMetaGuard(unittest.TestCase):
+    """Meta-test: every deterministic checker must have a round-trip test.
+
+    `_TESTED_CHECKERS` (module-level frozenset above) must equal exactly
+    the set of keys in DETERMINISTIC_CHECKERS.  Adding a new checker without
+    updating _TESTED_CHECKERS (and writing the actual round-trip tests) will
+    fail this guard.
+    """
+
+    def test_all_checkers_have_round_trip_tests(self):
+        checker_ids = set(DETERMINISTIC_CHECKERS)
+        self.assertEqual(
+            _TESTED_CHECKERS,
+            checker_ids,
+            f"Coverage mismatch.\n"
+            f"  In DETERMINISTIC_CHECKERS but not in _TESTED_CHECKERS: "
+            f"{sorted(checker_ids - _TESTED_CHECKERS)}\n"
+            f"  In _TESTED_CHECKERS but not in DETERMINISTIC_CHECKERS: "
+            f"{sorted(_TESTED_CHECKERS - checker_ids)}",
+        )
+
+    def test_tested_checkers_is_frozenset(self):
+        """The sentinel must be a frozenset (immutable; accidental mutation is a bug)."""
+        self.assertIsInstance(_TESTED_CHECKERS, frozenset)
+
+    def test_tested_checkers_count(self):
+        """There are exactly 8 deterministic checkers; guard against silent additions."""
+        self.assertEqual(len(_TESTED_CHECKERS), 8)
+
+
+class GradeCoercionBoundaryTest(unittest.TestCase):
+    """Boundary coverage for bench.quality.__main__._coerce_verdicts.
+
+    CliVerdictCoercionTest covers the basic null->None regression.  This class
+    adds complementary boundary cases: true, false, missing keys, and
+    non-bool truthy/falsey values.  No overlap with the existing test.
+    """
+
+    def setUp(self):
+        from bench.quality.__main__ import _coerce_verdicts
+        self._coerce = _coerce_verdicts
+
+    # --- null -> None (unjudged) -------------------------------------------
+    def test_null_becomes_none(self):
+        """JSON null must coerce to Python None (not False)."""
+        result = self._coerce({"q1": None})
+        self.assertIsNone(result["q1"])
+
+    # --- true -> True, false -> False (identity for booleans) ---------------
+    def test_true_becomes_true(self):
+        result = self._coerce({"q1": True})
+        self.assertIs(result["q1"], True)
+
+    def test_false_becomes_false(self):
+        result = self._coerce({"q1": False})
+        self.assertIs(result["q1"], False)
+
+    # --- missing keys: _coerce_verdicts only touches keys in raw dict --------
+    def test_missing_keys_not_invented(self):
+        """Keys absent from the raw dict must not appear in the coerced result."""
+        result = self._coerce({"fa1": True})
+        self.assertNotIn("fa2", result)
+        self.assertNotIn("cit3", result)
+
+    # --- non-bool truthy value: 1 -> True, 0 -> False -----------------------
+    def test_truthy_int_becomes_true(self):
+        """A truthy non-bool (e.g. 1) should coerce to True, not None."""
+        result = self._coerce({"q1": 1})
+        self.assertIs(result["q1"], True)
+        self.assertIsNotNone(result["q1"])  # must NOT be treated as unjudged
+
+    def test_falsey_int_zero_becomes_false(self):
+        """A falsey non-bool (e.g. 0) should coerce to False, not None."""
+        result = self._coerce({"q1": 0})
+        self.assertIs(result["q1"], False)
+        self.assertIsNotNone(result["q1"])  # must NOT be treated as unjudged
+
+    # --- mixed bag: null, bool, and truthy together -------------------------
+    def test_mixed_coercion(self):
+        """All three variants can coexist in one call."""
+        result = self._coerce({"a": None, "b": True, "c": False, "d": 1})
+        self.assertIsNone(result["a"])
+        self.assertIs(result["b"], True)
+        self.assertIs(result["c"], False)
+        self.assertIs(result["d"], True)
+
+    # --- null lands in unjudged (integration with grade()) ------------------
+    def test_null_verdict_lands_in_unjudged(self):
+        """After coercion a null entry must increase the unjudged count, not the
+        judged count — integration check that None really flows through grade()."""
+        coerced = self._coerce({"fa1": True, "fa2": None})
+        d = grade(coerced).as_dict()
+        # fa2 is None -> unjudged; fa1 is True -> judged
+        self.assertEqual(d["coverage"]["judged"], 1)
+        ids = {q["id"]: q["verdict"] for q in d["questions"]}
+        self.assertIsNone(ids["fa2"])
+
+
 if __name__ == "__main__":
     unittest.main()

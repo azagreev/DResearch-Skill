@@ -307,6 +307,15 @@ echo '{"total_budget":1.0,"spends":[{"gate":"gate_3_analysis","amount":0.3}]}' |
 
 ---
 
+## Разработка и процесс
+
+- **Pre-merge чек-лист:** [`docs/PRE_MERGE_CHECKLIST.md`](docs/PRE_MERGE_CHECKLIST.md) — debt-sweep, сьюты, детерминизм, `/code-review`, version-ritual и стоячие гарды.
+- **Журнал багов:** [`docs/BUGLOG.md`](docs/BUGLOG.md) — каждый дефект, его корневая причина и гард, который теперь ловит этот класс (14 багов за v1.3–v1.5 → 5 системных корней).
+- **Инварианты:** `AGENT.MD` §10.1 (root-cause table #1–#11) + `docs/TECHDEBT.md`.
+- **CI:** `.github/workflows/ci.yml` гоняет engine+bench сьюты, детерминизм-гейт и golden-corpus на каждый push/PR (stdlib-only).
+
+---
+
 ## Безопасность и этика
 
 - Все методы обхода следуют scope **ETHICAL_ONLY**
