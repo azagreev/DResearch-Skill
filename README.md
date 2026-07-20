@@ -11,14 +11,22 @@
 
 - **7-фазный workflow**: Анализ задачи → Декомпозиция → Сбор → Верификация → Синтез → Вывод → Приёмка
 - **Cost-First выполнение**: 4-уровневая иерархия инструментов — начинай бесплатно, эскалируй только при необходимости
-- **Evidence-Based отчёты**: каждое утверждение имеет citation, каждый источник — tier
+- **Evidence-Based отчёты**: каждое утверждение имеет verifiable citation с привязкой к строкам источника (【S†L{a}-L{b}】), каждый источник — tier
 - **Anti-Hallucination протокол**: zero tolerance — FactCheck Agent ветирует каждый факт
 - **4 уровня глубины**: Quick (30 мин) → Standard (1–2 ч) → Deep (3–5 ч) → Exhaustive (5+ ч)
 - **Confidence Scoring**: шкала 1–5 с визуальными индикаторами для каждого утверждения
 - **Checkpoint Recovery**: адаптивный heartbeat (2–10 мин) + checkpoint на каждом gate — откат к последнему gate, а не к нулю
 - **Cost & Cache телеметрия**: захват cache-сигналов, `cache_hit_rate`, `bundle_hash`, именованные границы компактизации, CLI `cost`
 - **Typed Collection Seam**: единый контракт `CollectionResult` над любым провайдером (web_search/Jina/Firecrawl/…) со snippet-cap и risk_class
-- **CI-регрессия**: 247 юнит-тестов, golden corpus, opional cost/latency-пороги
+- **CI-регрессия**: 467 юнит-тестов (371 engine + 96 bench), golden corpus, determinism-gate, опциональные cost/latency-пороги
+
+### Новое в 1.6.0
+
+Портировано из [OpenResearcher](https://github.com/TIGER-AI-Lab/OpenResearcher) (TIGER-AI-Lab) — анализ переиспользования в [`docs/OPENRESEARCHER_REUSE.md`](docs/OPENRESEARCHER_REUSE.md), сквозная трассировка REQ→критерий→тест в [`docs/TRACE_OPENRESEARCHER.md`](docs/TRACE_OPENRESEARCHER.md).
+
+- **Verifiable-citation формат** 【S†L{a}-L{b}】 — цитата привязана к конкретному диапазону строк источника (проверяемо и человеком, и верификатором) + правило «≤10 слов дословно» против скрытого копирайт-воспроизведения. Стабильная нумерация строк; обратная совместимость с legacy `[S1]` сохранена байт-в-байт.
+- **Честная оценка качества** (`bench/`): LLM-судья с dual-denominator accuracy (Judged vs Overall — сбои судьи/парсинга не маскируются под ошибки движка), запинённый `JudgeConfig` (model + temperature + prompt_hash), рекурсивный двусторонний import-guard — весь недетерминизм строго вне движка.
+- **Устойчивый вход CLI**: lenient-then-strict парсинг JSON (чинит markdown code-fence, smart-quotes, trailing commas), не ослабляя downstream типизированную валидацию.
 
 ---
 
