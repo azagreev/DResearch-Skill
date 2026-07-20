@@ -11,7 +11,8 @@ from __future__ import annotations
 from collections import Counter
 from typing import Dict, List, Optional
 
-from .model import Claim, ClaimCategory, Snapshot, Source, get_category_labels
+from . import ingest
+from .model import Claim, ClaimCategory, Snapshot, Source, _is_citation_span, get_category_labels
 from .policy import Disposition, ReportMode, disposition
 
 _CONFIDENCE_EMOJI = {5: "🔵", 4: "🟢", 3: "🟡", 2: "🔴", 1: "⚪"}
@@ -39,6 +40,7 @@ _LABELS = {
         "other_findings": "Прочие выводы",
         "corrections": "Опровергнуто / коррекции",
         "sources": "Источники",
+        "clamp_note": "Скорректированные цитатные диапазоны (clamp)",
         "footer": ("Выводов: {findings} · коррекций: {corrections} · "
                    "исключено-в-память: {excluded} · на пересмотр: {revision}"),
     },
@@ -49,6 +51,7 @@ _LABELS = {
         "other_findings": "Other findings",
         "corrections": "Refuted / corrections",
         "sources": "Sources",
+        "clamp_note": "Adjusted citation spans (clamped)",
         "footer": ("Findings: {findings} · corrections: {corrections} · "
                    "excluded-to-memory: {excluded} · flagged-for-revision: {revision}"),
     },
@@ -83,8 +86,54 @@ def _flag(claim: Claim, language: str = "ru") -> str:
     return f" {emoji} _{label}_" if label else ""
 
 
+def resolve_citation_spans(claims: List[Claim], sources_by_id: Dict[str, Source]) -> List[str]:
+    """Clamp every claim.citation_spans entry into its source's actual content
+    bounds (R2 / AC2.3), mutating the spans in place. A span outside
+    [1, len(content_lines)] is clamped, never silently — each adjustment is
+    recorded and returned as a note. No-op (returns []) for claims/spans that
+    don't exist, so calling this on a snapshot with no spans is always safe.
+    """
+    notes: List[str] = []
+    for claim in claims:
+        spans = getattr(claim, "citation_spans", None)
+        if not spans:
+            continue
+        for sid, span in list(spans.items()):
+            # Only clamp/annotate spans for sources the claim actually cites;
+            # _cites renders by claim.sources, so a span for any other sid would
+            # produce a clamp note for a citation that never appears (misleading).
+            if sid not in claim.sources:
+                continue
+            source = sources_by_id.get(sid)
+            if source is None or not _is_citation_span(span):
+                continue
+            lines = ingest.content_lines(source)
+            max_line = max(len(lines), 1)
+            a, b = span[0], span[1]
+            new_a = min(max(a, 1), max_line)
+            new_b = min(max(b, 1), max_line)
+            if new_a > new_b:
+                new_a, new_b = new_b, new_a
+            if [new_a, new_b] != [a, b]:
+                notes.append(
+                    f"claim {claim.id}: citation span {sid} L{a}-L{b} out of bounds "
+                    f"(content has {len(lines)} line(s)) — clamped to L{new_a}-L{new_b}"
+                )
+                spans[sid] = [new_a, new_b]
+    return notes
+
+
 def _cites(claim: Claim, sources_by_id: Dict[str, Source]) -> str:
-    refs = [f"[{sid}]" for sid in claim.sources if sid in sources_by_id]
+    spans = getattr(claim, "citation_spans", None) or {}
+    refs = []
+    for sid in claim.sources:
+        if sid not in sources_by_id:
+            continue
+        span = spans.get(sid)
+        if _is_citation_span(span):
+            refs.append(f"【{sid}†L{span[0]}-L{span[1]}】")
+        else:
+            refs.append(f"[{sid}]")
     return f" — {' '.join(refs)}" if refs else ""
 
 
@@ -121,6 +170,12 @@ def render_markdown(
 
     sources_by_id = {s.id: s for s in snapshot.sources}
     claims_by_id = {c.id: c for c in snapshot.claims}
+    # Safe no-op when no claim carries a citation_spans entry (R2 / AC2.3):
+    # clamps any out-of-bounds span before rendering so _cites never emits an
+    # unresolved/invalid line range. When a clamp actually happens the notes
+    # are surfaced in the report footer below (AC2.3 — never silent for the
+    # reader); with no clamp, clamp_notes is empty and output is byte-identical.
+    clamp_notes = resolve_citation_spans(snapshot.claims, sources_by_id)
     disp = {c.id: disposition(c, report_mode) for c in snapshot.claims}
 
     corrections = [c for c in snapshot.claims if disp[c.id] is Disposition.INCLUDE_AS_CORRECTION]
@@ -185,4 +240,14 @@ def render_markdown(
             revision=counts.get(Disposition.TRIGGER_REVISION, 0),
         ) + "_"
     )
+
+    # AC2.3 (R2 finding #1): surface clamp adjustments to the reader, but ONLY
+    # when a clamp actually occurred — with no clamp this block adds nothing and
+    # the output stays byte-identical to the pre-R2 render (AC2.5 / determinism).
+    if clamp_notes:
+        lines.append("")
+        lines.append(f"> ⚠️ _{labels['clamp_note']}_")
+        for note in clamp_notes:
+            lines.append(f"> - {note}")
+
     return "\n".join(lines)

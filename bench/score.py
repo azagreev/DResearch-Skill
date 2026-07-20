@@ -260,6 +260,37 @@ def aggregate(scores: List[TaskScore], *, arm: str = "") -> Summary:
     )
 
 
+def dual_accuracy(*, met: int, unmet: int, unjudged: int) -> Dict:
+    """Honest dual-denominator accuracy (OpenResearcher eval.py's "Judged vs
+    Overall" split), reported alongside -- never in place of -- the DRACO
+    ``normalized``/``criteria_pass_rate`` formula above.
+
+    This is the UNWEIGHTED criterion MET-rate under two denominators:
+      * ``judged_accuracy``  = met / (met + unmet)            -- only over
+        criteria a judge actually returned a verdict for.
+      * ``overall_accuracy`` = met / (met + unmet + unjudged) -- over every
+        criterion, so silent judge failures can't inflate the score.
+
+    The two are equal exactly when ``unjudged == 0`` (nothing to hide);
+    divergence is itself the signal that some criteria went unjudged. Both
+    denominators default to 0.0 (never raise) when empty.
+    """
+    judged = met + unmet
+    total = met + unmet + unjudged
+    judged_accuracy = (met / judged) if judged > 0 else 0.0
+    overall_accuracy = (met / total) if total > 0 else 0.0
+    return {
+        "judged_accuracy": judged_accuracy,
+        "overall_accuracy": overall_accuracy,
+        "breakdown": {
+            "met": met,
+            "unmet": unmet,
+            "unjudged": unjudged,
+            "total": total,
+        },
+    }
+
+
 def delta(arm_a: Summary, arm_b: Summary) -> Dict:
     """B - A deltas for the ablation read-out (positive => arm B better).
 

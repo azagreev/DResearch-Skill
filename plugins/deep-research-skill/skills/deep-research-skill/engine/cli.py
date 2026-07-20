@@ -9,11 +9,84 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 from . import __version__, runtime
+
+
+# --------------------------------------------------------------------------- #
+# Lenient-then-strict input parsing (R1)
+# --------------------------------------------------------------------------- #
+class InputParseError(ValueError):
+    """Raised when CLI input is neither valid JSON nor repairable by the
+    bounded, stdlib-only syntax repairs in `_lenient_loads`.
+
+    Deliberately a dedicated type (not a bare ValueError) so `main()` can
+    catch parse failures narrowly, without masking downstream typed-validation
+    errors (KeyError/ValueError raised by model.py constructors) that must
+    keep propagating unchanged."""
+
+
+_FENCE_RE = re.compile(r"^```[ \t]*[A-Za-z0-9_+-]*[ \t]*\r?\n(.*?)\r?\n?```[ \t]*$", re.DOTALL)
+_SMART_QUOTES = str.maketrans({
+    "“": '"', "”": '"', "«": '"', "»": '"',
+    "‘": "'", "’": "'", "‚": "'", "„": "'",
+})
+_TRAILING_COMMA_RE = re.compile(r",(\s*[}\]])")
+
+
+def _strip_code_fence(text: str) -> str:
+    """Step 1: remove a wrapping ```json ... ``` / ``` ... ``` markdown fence,
+    if present. Pure/deterministic; leaves non-fenced text untouched."""
+    stripped = text.strip()
+    match = _FENCE_RE.match(stripped)
+    if match:
+        return match.group(1)
+    return text
+
+
+def _normalize_smart_quotes(text: str) -> str:
+    """Step 2: curly/typographic quotes -> straight ASCII quotes (fixed table)."""
+    return text.translate(_SMART_QUOTES)
+
+
+def _strip_trailing_commas(text: str) -> str:
+    """Step 3: remove a comma that immediately precedes a closing `}`/`]`."""
+    return _TRAILING_COMMA_RE.sub(r"\1", text)
+
+
+def _lenient_loads(raw: str) -> Any:
+    """Strict-first, bounded-repair JSON parse.
+
+    Step 0: try `json.loads(raw)` unchanged; on success return verbatim - no
+    repair is ever applied to already-valid input (AC1.1). Only on
+    JSONDecodeError do we run the fixed, ordered, one-shot repair pipeline
+    (fence-strip -> smart-quote normalize -> trailing-comma removal) and
+    attempt `json.loads` exactly once more. If that second parse also fails,
+    raise InputParseError (never return None / never fail silently, AC1.4).
+
+    This function returns only a plain Python object (dict/list/scalar) - it
+    never imports or calls model.py, so a syntax-repaired payload still flows
+    into the same downstream typed constructors/validators unchanged (the
+    invariant: successful parse never substitutes for schema validation).
+    """
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        repaired = _strip_code_fence(raw)
+        repaired = _normalize_smart_quotes(repaired)
+        repaired = _strip_trailing_commas(repaired)
+        try:
+            return json.loads(repaired)
+        except json.JSONDecodeError as exc2:
+            snippet = repaired[:200]
+            raise InputParseError(
+                f"input is not valid JSON and could not be repaired: {exc2} "
+                f"(original error: {exc}); snippet: {snippet!r}"
+            ) from exc2
 
 
 # --------------------------------------------------------------------------- #
@@ -35,9 +108,9 @@ def _emit_json(obj) -> None:
 
 def _read_input(path: Optional[str]) -> dict:
     if not path or path == "-":
-        return json.loads(sys.stdin.read())
+        return _lenient_loads(sys.stdin.read())
     with open(path, encoding="utf-8") as handle:
-        return json.loads(handle.read())
+        return _lenient_loads(handle.read())
 
 
 def _report_mode(name: str):
@@ -713,4 +786,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if func is None:
         parser.print_help()
         return 0
-    return func(args)
+    try:
+        return func(args)
+    except InputParseError as exc:
+        # Narrow catch: only the dedicated parse-failure type. Downstream typed
+        # validation errors (KeyError/ValueError from model.py constructors)
+        # must keep propagating unchanged - success-of-parse never substitutes
+        # for schema validation.
+        print(f"error: {exc}", file=sys.stderr)
+        return 1

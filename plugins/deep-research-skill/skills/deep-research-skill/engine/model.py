@@ -250,6 +250,7 @@ class Claim:
     verdict_explanation: Optional[str] = None
     remediation: Optional[str] = None  # machine-readable "Violation: … Fix: …" when self-healable
     metadata: Dict[str, Any] = field(default_factory=dict)  # v1.3: e.g. {"disagreement": bool, "reverified_category": str} from independent re-verification
+    citation_spans: Optional[Dict[str, List[int]]] = None  # R2: optional {source_id: [line_a, line_b]} 1-indexed verbatim-quote span; None (default) keeps legacy [S1] rendering and byte-identical serialization
 
 
 @dataclass
@@ -395,6 +396,48 @@ def _source_from(d: Dict[str, Any]) -> Source:
     )
 
 
+def _is_citation_span(span: Any) -> bool:
+    """True iff `span` is a well-formed citation-span *shape*: a 2-element
+    sequence of ints (bools excluded). Shared guard so _cites and
+    resolve_citation_spans (report.py) can never index a malformed span
+    (R2 finding #3 — latent IndexError/TypeError on the data boundary)."""
+    return (
+        isinstance(span, (list, tuple))
+        and len(span) == 2
+        and all(isinstance(x, int) and not isinstance(x, bool) for x in span)
+    )
+
+
+def _valid_citation_span(span: Any) -> Optional[List[int]]:
+    """Return a normalized [a, b] pair iff `span` is a well-formed 1-indexed
+    line range (two ints, 1 <= a <= b); otherwise None. Malformed shapes
+    (len != 2, non-int, a > b, a/b < 1) are rejected here so they never
+    propagate outward from the deserialization boundary."""
+    if not _is_citation_span(span):
+        return None
+    a, b = span[0], span[1]
+    if a < 1 or b < 1 or a > b:
+        return None
+    return [a, b]
+
+
+def _citation_spans_from(value: Optional[Dict[str, Any]]) -> Optional[Dict[str, List[int]]]:
+    """Normalize a round-tripped citation_spans mapping. Missing/empty -> None
+    (matching the field default so old checkpoints and no-span claims agree).
+    Every span is validated at this single boundary: only well-formed [a, b]
+    pairs (two ints, 1 <= a <= b) survive; malformed entries are dropped so
+    they can never reach _cites/resolve_citation_spans and crash (R2 finding
+    #3). If nothing survives, returns None (byte-identical to a no-span claim)."""
+    if not value:
+        return None
+    normalized: Dict[str, List[int]] = {}
+    for sid, span in value.items():
+        pair = _valid_citation_span(span)
+        if pair is not None:
+            normalized[sid] = pair
+    return normalized or None
+
+
 def _claim_from(d: Dict[str, Any]) -> Claim:
     return Claim(
         id=d["id"],
@@ -409,6 +452,7 @@ def _claim_from(d: Dict[str, Any]) -> Claim:
         verdict_explanation=d.get("verdict_explanation"),
         remediation=d.get("remediation"),
         metadata=dict(d.get("metadata", {})),
+        citation_spans=_citation_spans_from(d.get("citation_spans")),
     )
 
 
