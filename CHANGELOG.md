@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-07-20
+
+Reuse sweep porting three high-value patterns from OpenResearcher (TIGER-AI-Lab), each closing a recognised gap. Reuse analysis in `docs/OPENRESEARCHER_REUSE.md`; full REQ->AC->test traceability in `docs/TRACE_OPENRESEARCHER.md`. Engine tests 353 -> 371, bench 79 -> 96; golden-corpus PASSED; determinism byte-identical; 0 regressions. Pre-release review (clean context): GO.
+
+### Added
+- **Verifiable line-range citations** 【S†L{a}-L{b}】 + a <=10-word verbatim-quote rule (`ingest.py`/`model.py`/`report.py`/`SKILL.md`). Stable 1-indexed line numbering via a single `content_lines()` chokepoint; `Claim.citation_spans` is optional and drops from serialization when None (byte-identical back-compat); out-of-bounds/malformed spans are clamped or dropped with a surfaced trace, never silently.
+- **Honest bench judge** (`bench/judge/parse.py`, `bench/judge/config.py`, `bench/score.py`): `parse_judge_response` (extract-before-verdict, markdown-tolerant, unparseable -> unjudged), dual-denominator accuracy (judged vs overall), pinned `JudgeConfig` (model+temperature+prompt_hash), and a recursive two-way AST import-guard keeping any LLM/non-determinism out of `bench/judge`.
+
+### Changed
+- **Lenient-then-strict CLI input** (`engine/cli.py`): strict-first fast path, then a fixed one-shot repair (code-fence strip, smart-quote normalize, trailing-comma strip) on `JSONDecodeError`, raising `InputParseError` (never returns None). Repair is syntax-only and never bypasses downstream typed validation (`model.py` untouched; `main()` catches only `InputParseError`).
+
 ## [1.5.0] - 2026-06-15
 
 Engine simplification — cut features inert on **both** DRACO and the trust metrics (invariant #10 "shipped ≠ valuable"). Each cut was gated by the deterministic trust scorecard (`bench/trust/`): determinism / unsupported-claim suppression / citation completeness / checkpoint fidelity remained byte-identical, proving the cuts removed dead code, not value. `CHECKPOINT_VERSION` unchanged (1.3 — no serialized field removed). Engine tests 362 → 351.

@@ -2,7 +2,7 @@
 
 > **Навык глубокого исследования для Claude Code (testing release).** Многофазный workflow с cost-first выполнением, evidence-based отчётами, anti-hallucination протоколом и прозрачным confidence scoring.
 
-**Версия:** 1.5.0 | **Лицензия:** MIT | **Язык:** русский (отчёт: ru/en через `TaskFrame.language`)
+**Версия:** 1.6.0 | **Лицензия:** MIT | **Язык:** русский (отчёт: ru/en через `TaskFrame.language`)
 **Автор:** Andrey Zagreev | **Обратная связь:** [@zagreev](https://t.me/zagreev)
 
 ---
@@ -144,7 +144,7 @@ DResearch-Skill/                              # маркетплейс (коре
 ├── plugins/
 │   └── deep-research-skill/
 │       ├── .claude-plugin/
-│       │   └── plugin.json                   # манифест плагина (version: 1.5.0)
+│       │   └── plugin.json                   # манифест плагина (version: 1.6.0)
 │       └── skills/
 │           └── deep-research-skill/          # self-contained навык
 │               ├── SKILL.md                  # точка входа (7-фазный workflow)
