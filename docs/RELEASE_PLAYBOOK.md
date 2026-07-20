@@ -1,8 +1,9 @@
 # Release Playbook — DResearch-Skill
 
-Практический чек-лист подготовки релиза. Выжимка уроков v1.6.0 (порт R1–R3 из
-OpenResearcher): что делать, чтобы релиз был чистым и повторяемым, и какие грабли
-уже известны. Держать в актуальном состоянии — обновлять после каждого релиза.
+Практический чек-лист подготовки релиза. Выжимка уроков v1.6.0 (порт из
+OpenResearcher) и v1.7.0 (порт из hyperresearch, 7 REQ, 0 регрессий): что делать,
+чтобы релиз был чистым и повторяемым, и какие грабли уже известны. Держать в
+актуальном состоянии — обновлять после каждого релиза.
 
 ---
 
@@ -37,7 +38,11 @@ $job = Start-Job { python -m pytest tests/ }
 if (Wait-Job $job -Timeout 120) { Receive-Job $job } else { Stop-Job $job; "TIMEOUT" }
 ```
 
-Калибровка из v1.6.0: SMOKE ~45s, FULL_ENGINE ~120s, FULL_BENCH ~60s.
+Калибровка из v1.6.0: SMOKE ~45s, FULL_ENGINE ~120s, FULL_BENCH ~60s. На деле
+весь сьют движка идёт ~2–3s, bench ~1s (v1.7.0) — таймаут это дешёвая страховка,
+а не узкое место. Гейт детерминизма — прогнать дважды и сравнить хэш:
+`bench.trust`×2 + `bench.quality`×2 → `Get-FileHash` diff; плюс
+`evals/ci_regression.py` (golden-corpus).
 
 ## 3. Сквозная трассировка
 
@@ -66,10 +71,44 @@ recur*.
 - [ ] `plugins/deep-research-skill/.claude-plugin/plugin.json` — версия.
 - [ ] `README.md` — строка версии **и** актуальные числа (счётчик тестов и т.п. — сверять с реальностью!).
 - [ ] `CHANGELOG.md` — новая секция по Keep a Changelog (Added / Changed).
+- [ ] Если добавлялся CLI-verb — синхронно `cli.CAPABILITY_VERBS`, `CURATED_CAPABILITIES` в `tests/test_phase15_reachability.py` и доку в `SKILL.md` (см. §8).
 - [ ] Коммит с корректной git-идентичностью (Andrey Zagreev / a.zagreev@gmail.com).
 - [ ] Аннотированный тег на `main`, push, GitHub release через `gh`.
 - [ ] Проверить статус CI после push.
 - [ ] НЕ коммитить рабочие/локальные файлы (`docs/BUGLOG.md` в работе, `.claude/settings.local.json`).
+- [ ] Стейджить релизные файлы ЯВНЫМ списком путей (`git add plugins/ README.md ...`), не `git add -A` — так рабочие/локальные файлы не попадут в коммит по ошибке; после — сверить `git diff --cached --name-only`.
+
+## 7. Байт-идентичные фичи в determinism-gated движке
+
+Движок под golden-corpus + byte-identical determinism replay. Как добавлять фичи
+БЕЗ регрессий (проверено на v1.7.0 — 7 REQ, 0 регрессий):
+
+- **Новое поле модели → `Optional[...] = None`.** `_jsonable` дропает None →
+  сериализация байт-идентична, checkpoint back-compat без bump `CHECKPOINT_VERSION`
+  (напр. `Claim.citation_spans`, `Source.retracted`).
+- **Новый гейт, меняющий отчёт → привязать к opt-in сигналу.** quote-integrity
+  срабатывает только на claim'ах со `citation_spans` → legacy/golden не тронуты
+  (перед стартом `grep` сигнал в golden — его там быть не должно).
+- **Аудит без права на правку → read-only CLI-verb, НЕ вплетать в `render`.**
+  numeric/instruction-coverage → отчёт всегда байт-идентичен (тест-guard: `report.py`
+  не импортирует модуль).
+- **Изменение общей функции → no-op на legacy.** independence-тайбрейкер в
+  `resolve_conflict` срабатывает только если ОБЕ стороны заскорены, иначе skip →
+  старые данные без изменений.
+- **Тяжёлое вычисление → отдельный verb; `run_pipeline` его не вызывает** →
+  default-пайплайн и golden неизменны.
+
+## 8. Добавление CLI-verb'а (reachability guard)
+
+Verb «не существует», пока он не проходит guard. Синхронно правь три места, иначе
+CI красный:
+
+1. `engine/cli.py` — `_cmd_<verb>` + регистрация субпарсера + запись в `CAPABILITY_VERBS`.
+2. `tests/test_phase15_reachability.py` — тот же ключ в кортеже `CURATED_CAPABILITIES`
+   (тест на set-equality с `CAPABILITY_VERBS`).
+3. `SKILL.md` — задокументировать `engine <verb>` (docs↔CLI guard проверяет, что
+   каждый упомянутый verb реально зарегистрирован; JSON-in ключи сверяются для
+   snapshot-verb'ов из `_KEY_CHECK_VERBS`).
 
 ---
 
@@ -80,6 +119,8 @@ recur*.
 | Edit/Write падают на `Y:` с `fchmod` ENOENT | `Y:` — vmware shared-folder mount | python-патч-скрипт в scratchpad + запуск, либо `Copy-Item -Force` |
 | Git «dubious ownership» | тот же mount | `git config --global --add safe.directory '%(prefix)///vmware-host/Shared Folders/GitHub/DResearch-Skill'` (один раз) |
 | Коммит «Author identity unknown» | git-идентичность не настроена | задать `user.name`/`user.email`, при необходимости `commit --amend --reset-author` |
+| `Bash`-инструмент на `Y:` молча возвращает пусто (особенно `cd` в `Y:`) | mount-специфика | использовать `PowerShell` (основной шелл), не `Bash` |
+| subprocess-тест читает вывод движка как `None` / `UnicodeDecodeError` | движок печатает UTF-8, `subprocess(text=True)` декодит локалью (cp1252) | `subprocess.run(..., encoding="utf-8")` |
 | CRLF→LF предупреждения git | нормализация переводов строк | безвредно, игнорировать |
 
 ## Мини-ретроспектива v1.6.0
@@ -89,3 +130,14 @@ IndexError на malformed span и em-dash scope-creep); трассировка R
 параллельный root-cause; smoke-first. Что кусалось: правки на `Y:` через
 scratchpad; устаревший счётчик тестов в README (247 → 467) — сверять числа при
 каждом bump'е.
+
+## Мини-ретроспектива v1.7.0
+
+Что сработало: per-REQ ревью в чистом контексте поймало 2 реальных **MAJOR** —
+H1 глушил debunk'и (INCLUDE_AS_CORRECTION), H3 отозванный источник сохранял вето
+на contradicting-стороне — оба закрыты системно, не костылём; byte-identity-приёмы
+(§7) дали 7 REQ без регрессий; ревью запускались в фоне параллельно следующему REQ.
+Что кусалось: `Bash` на `Y:` молчит → перешли на `PowerShell`; UTF-8/cp1252 в
+subprocess-тестах (`encoding="utf-8"`); тест-баг vs код-баг (детерминизм-тест на
+идемпотентной мутации `mark_retractions` — чинить ТЕСТ свежими объектами, не код);
+счётчик тестов в README снова требовал ручной сверки (428, не 427).
