@@ -34,12 +34,14 @@ def _terms(text: str) -> Set[str]:
     return {w for w in _WORD_RE.findall((text or "").lower()) if w not in _STOP}
 
 
-def uncovered_criteria(snapshot: Snapshot) -> List[str]:
+def uncovered_criteria(snapshot: Snapshot, claims=None) -> List[str]:
     """Acceptance-criteria + scope items with ZERO significant-term overlap with
     any finding (claim text) or cluster title, in declaration order (criteria
-    then scope). An item with no significant terms of its own is never flagged."""
+    then scope). An item with no significant terms of its own is never flagged.
+    `claims` overrides the pooled claim set (e.g. only the SHIPPED findings) so
+    a ship-gate measures coverage of what actually ships."""
     pool: Set[str] = set()
-    for claim in snapshot.claims:
+    for claim in (claims if claims is not None else snapshot.claims):
         pool |= _terms(claim.text)
     for cluster in snapshot.clusters:
         pool |= _terms(cluster.title)

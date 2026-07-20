@@ -559,6 +559,44 @@ def _cmd_quotecheck(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_claimsmatrix(args: argparse.Namespace) -> int:
+    """H9 — stance-target reconciliation matrix.
+
+    JSON-in {snapshot} or {claims}. Groups claims by `stance_target` and
+    reconciles each group (consensus / contradicted / disputed) with category
+    counts and quantified values. Read-only.
+    """
+    from . import reconcile
+    from .model import _claim_from, snapshot_from_dict
+
+    data = _read_input(args.input)
+    if "snapshot" in data:
+        claims = snapshot_from_dict(data["snapshot"]).claims
+    else:
+        claims = [_claim_from(c) for c in data.get("claims", [])]
+    rows = reconcile.reconcile(claims)
+    _emit_json({"matrix": rows, "summary": {"n_targets": len(rows)}})
+    return 0
+
+
+def _cmd_shipcheck(args: argparse.Namespace) -> int:
+    """H8 — ship-gate: one PASS/WARN/FAIL over the whole verification battery.
+
+    JSON-in {snapshot, mode?, profile?}. Aggregates quote-integrity,
+    retraction, citation-density, completeness (blocking) + numeric-
+    consistency, instruction-coverage (warning) into a single verdict with a
+    per-check breakdown. Thresholds from the named scale profile. Read-only.
+    """
+    from . import profiles, shipgate
+    from .model import snapshot_from_dict
+
+    data = _read_input(args.input)
+    snapshot = snapshot_from_dict(data["snapshot"])
+    prof = profiles.get_profile(data.get("profile", "standard"))
+    _emit_json(shipgate.check(snapshot, _report_mode(data.get("mode", "findings")), prof))
+    return 0
+
+
 def _cmd_instrcheck(args: argparse.Namespace) -> int:
     """H5 — instruction-coverage audit (mechanical instruction-critic).
 
@@ -758,6 +796,8 @@ CAPABILITY_VERBS: dict = {
     "retraction": "retraction",
     "profile": "profile",
     "instrcheck": "instrcheck",
+    "shipcheck": "shipcheck",
+    "claimsmatrix": "claimsmatrix",
     "plan": "plan",
     "gate": "gate",
 }
@@ -908,6 +948,14 @@ def build_parser() -> argparse.ArgumentParser:
     instrcheck = sub.add_parser("instrcheck", help="instruction-coverage audit: flag acceptance-criteria/scope items no finding addresses")
     _add_input(instrcheck)
     instrcheck.set_defaults(func=_cmd_instrcheck)
+
+    shipcheck = sub.add_parser("shipcheck", help="ship-gate: aggregate the verification battery into one PASS/WARN/FAIL verdict")
+    _add_input(shipcheck)
+    shipcheck.set_defaults(func=_cmd_shipcheck)
+
+    claimsmatrix = sub.add_parser("claimsmatrix", help="stance-target reconciliation: group claims by target -> consensus/contradicted/disputed")
+    _add_input(claimsmatrix)
+    claimsmatrix.set_defaults(func=_cmd_claimsmatrix)
 
     plan = sub.add_parser("plan", help="validate + layer a sub-task DAG (status/errors/layers/ready)")
     _add_input(plan)

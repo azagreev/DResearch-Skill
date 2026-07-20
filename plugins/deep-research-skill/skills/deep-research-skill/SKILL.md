@@ -307,6 +307,10 @@ On `status == "error"` or `"rate_limited"`, `items` is always `[]` and
 
 - `engine instrcheck` — JSON-in `{snapshot}` → `{uncovered:[...], summary:{n_items, n_uncovered}}`. Instruction-coverage аудит (H5, механическое ядро instruction-critic): помечает пункты acceptance_criteria/scope, которые не покрыты ни одним выводом (нулевое пересечение значимых терминов с текстами claim'ов/заголовками кластеров). Read-only; отчёт не меняется.
 
+- `engine shipcheck` — JSON-in `{snapshot, mode?, profile?}` → `{verdict: PASS|WARN|FAIL, blocking:[...], warnings:[...], checks:{...}}`. Ship-gate (H8): агрегирует всю верификационную батарею (quote-integrity, retraction, citation-density, completeness — блокирующие; numeric, instruction-coverage — warning) в один вердикт; пороги из scale-профиля (H7). Read-only, единая точка «можно ли отгружать».
+
+- `engine claimsmatrix` — JSON-in `{snapshot}` (или `{claims}`) → `{matrix:[{target, claim_ids, n_claims, verdict, categories, numbers}], summary:{n_targets}}`. Stance-target реконсиляция (H9): claim'ы с `stance_target` группируются по объекту утверждения; движок детерминированно сводит группу к consensus / refuted / contradicted / inconclusive / disputed + канонические значения и флаг numeric_divergence (консенсус вердиктов не прячет расхождение чисел). Stance проставляет LLM (agent-слой), движок только группирует/сводит. Read-only.
+
 - `engine gate` — JSON-in `{snapshot, target_phase?}` → `{blocks_transition: reason|null, should_stop: reason|null, should_compact: boundary|null}`. Consults `state.gate_blocks_transition` (checks `sources_screened > 0` for phase ≥ 2; `citations_verified` for phase ≥ 5), `state.should_stop` (budget exhausted / done condition / stalled uncertainty), and `compact.should_compact` (named compaction boundaries). Returns null on each key when the check passes. Use at every phase boundary.
 
 **Checkpoint:** Факты проверены, категории присвоены, независимая верификация выполнена, отчёт FCA готов.

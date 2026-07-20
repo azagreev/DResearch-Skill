@@ -252,6 +252,7 @@ class Claim:
     remediation: Optional[str] = None  # machine-readable "Violation: … Fix: …" when self-healable
     metadata: Dict[str, Any] = field(default_factory=dict)  # v1.3: e.g. {"disagreement": bool, "reverified_category": str} from independent re-verification
     citation_spans: Optional[Dict[str, List[int]]] = None  # R2: optional {source_id: [line_a, line_b]} 1-indexed verbatim-quote span; None (default) keeps legacy [S1] rendering and byte-identical serialization
+    stance_target: Optional[str] = None  # H9: optional grouping key (what the claim asserts about); None (default) drops from serialization -> byte-identical; consumed by engine/reconcile.py
 
 
 @dataclass
@@ -455,6 +456,7 @@ def _claim_from(d: Dict[str, Any]) -> Claim:
         remediation=d.get("remediation"),
         metadata=dict(d.get("metadata", {})),
         citation_spans=_citation_spans_from(d.get("citation_spans")),
+        stance_target=d.get("stance_target"),
     )
 
 

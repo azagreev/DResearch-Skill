@@ -2,7 +2,7 @@
 
 > **Навык глубокого исследования для Claude Code (testing release).** Многофазный workflow с cost-first выполнением, evidence-based отчётами, anti-hallucination протоколом и прозрачным confidence scoring.
 
-**Версия:** 1.7.0 | **Лицензия:** MIT | **Язык:** русский (отчёт: ru/en через `TaskFrame.language`)
+**Версия:** 1.8.0 | **Лицензия:** MIT | **Язык:** русский (отчёт: ru/en через `TaskFrame.language`)
 **Автор:** Andrey Zagreev | **Обратная связь:** [@zagreev](https://t.me/zagreev)
 
 ---
@@ -18,7 +18,14 @@
 - **Checkpoint Recovery**: адаптивный heartbeat (2–10 мин) + checkpoint на каждом gate — откат к последнему gate, а не к нулю
 - **Cost & Cache телеметрия**: захват cache-сигналов, `cache_hit_rate`, `bundle_hash`, именованные границы компактизации, CLI `cost`
 - **Typed Collection Seam**: единый контракт `CollectionResult` над любым провайдером (web_search/Jina/Firecrawl/…) со snippet-cap и risk_class
-- **CI-регрессия**: 524 юнит-теста (428 engine + 96 bench), golden corpus, determinism-gate, опциональные cost/latency-пороги
+- **CI-регрессия**: 549 юнит-тестов (453 engine + 96 bench), golden corpus, determinism-gate, опциональные cost/latency-пороги
+
+### Новое в 1.8.0
+
+Продолжение переиспользования из [hyperresearch](https://github.com/jordan-gibbs/hyperresearch) (backlog в [`docs/HYPERRESEARCH_REUSE.md`](docs/HYPERRESEARCH_REUSE.md)).
+
+- **Ship-gate** (`engine shipcheck`): единый GO/NO-GO из всей верификационной батареи (quote-integrity, retraction, citation-density, completeness — блокирующие; numeric, instruction-coverage — warning); пороги из scale-профиля. Множество проверок точно отражает то, что реально попадает в отчёт (зеркало `report.py`).
+- **Stance-target реконсиляция** (`engine claimsmatrix`): claim'ы группируются по объекту утверждения и сводятся к честным вердиктам consensus / refuted / contradicted / inconclusive / disputed + флаг numeric_divergence (консенсус вердиктов не прячет расхождение чисел).
 
 ### Новое в 1.7.0
 
@@ -161,7 +168,7 @@ DResearch-Skill/                              # маркетплейс (коре
 ├── plugins/
 │   └── deep-research-skill/
 │       ├── .claude-plugin/
-│       │   └── plugin.json                   # манифест плагина (version: 1.7.0)
+│       │   └── plugin.json                   # манифест плагина (version: 1.8.0)
 │       └── skills/
 │           └── deep-research-skill/          # self-contained навык
 │               ├── SKILL.md                  # точка входа (7-фазный workflow)

@@ -84,6 +84,12 @@ def check_claim(claim: Claim, sources_by_id: Dict[str, Source]) -> List[str]:
     return [tok for tok in numbers if _digit_key(tok) not in keys]
 
 
+# Public seam: other engine modules (e.g. reconcile.py, H9) reuse the number
+# tokenizer and digit-key without depending on a private underscore name.
+number_tokens = _number_tokens
+digit_key = _digit_key
+
+
 def check_snapshot(snapshot: Snapshot) -> Dict[str, List[str]]:
     """{claim_id: [untraceable number tokens]} for every claim with >= 1
     untraceable number. Empty dict when everything traces."""

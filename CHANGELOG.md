@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-07-20
+
+Continuation of the hyperresearch reuse sweep (backlog in `docs/HYPERRESEARCH_REUSE.md`): two patterns turning the v1.7.0 verification battery into an actionable gate and adding contradiction/consensus reconciliation. Engine tests 428 -> 453, bench 96; golden-corpus PASSED; determinism byte-identical; 0 regressions. Per-REQ reviews (H8 NO-GO->GO, H9 GO) + pre-release review (clean context).
+
+### Added
+- **Ship-gate aggregator** (H8, `engine/shipgate.py`, `engine shipcheck`): one PASS/WARN/FAIL over the whole battery. Blocking = quote-integrity (a shippable finding dropped for an unbacked quote), a shipped claim citing a retracted source, citation-density below the profile floor, or an empty report; warning = untraceable numbers, uncovered acceptance-criteria/scope, retracted-in-bibliography. The gate's shipped-set faithfully mirrors report.render_markdown (completeness on findings-or-corrections; citation-density counts only sources that actually resolve/render; checks scoped to shipped). Read-only; thresholds from the scale profile (H7).
+- **Stance-target reconciliation** (H9, `engine/reconcile.py`, `engine claimsmatrix`): `Claim.stance_target` (Optional -> drops from serialization when None). Groups claims by target and reconciles into honest verdicts consensus / refuted (unanimous FALSE) / contradicted (VERIFIED+FALSE) / inconclusive (only non-decisive) / disputed (decisive mixed with non-decisive); surfaces canonical digit-key values + a numeric_divergence flag so a verdict consensus can't hide a value disagreement. Stance detection stays in the agent layer; the engine only groups + reconciles.
+
+### Changed
+- **`engine/numeric.py`** exposes public `number_tokens` / `digit_key` (stable seam reused by reconcile). **`engine/instrcov.py`** `uncovered_criteria` gained an optional `claims` pool so a ship-gate can measure coverage of the shipped set. **`engine/profiles.py`** gained `citation_density_min` (default 1.0).
+
 ## [1.7.0] - 2026-07-20
 
 Reuse sweep porting seven patterns from hyperresearch (jordan-gibbs), each closing a recognised DRS gap while preserving the stdlib-only + deterministic + offline invariant. Reuse analysis in `docs/HYPERRESEARCH_REUSE.md`; full REQ->AC->test traceability in `docs/TRACE_HYPERRESEARCH.md`. Engine tests 371 -> 428, bench 96; golden-corpus PASSED; determinism byte-identical; 0 regressions. Per-REQ reviews (H1/H2/H3) + pre-release review (clean context): GO. Six new read-only CLI verbs form a verification battery.

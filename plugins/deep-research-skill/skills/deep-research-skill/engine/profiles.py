@@ -29,6 +29,7 @@ class Profile:
     freshness_ratio: float = 0.60     # Gate 1: freshness >=60%
     source_diversity_min: int = 4     # Gate 1: diversity >=4 types
     completeness_index_min: int = 70  # Gate 5: CI >=70
+    citation_density_min: float = 1.0 # ship-gate: fraction of findings that must be cited (DRS evidence-based mandate: every claim cited)
 
 
 # Depth-keyed built-ins. Subtask bounds mirror SKILL.md's depth table; the gate

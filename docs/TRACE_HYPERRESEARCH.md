@@ -170,3 +170,62 @@ golden-pinned дефолты = историческим литералам. `pla
 **Инварианты подтверждены:** byte-identity (H1 no-op без span; numeric/instrcov не в render; `retracted` drop-when-None, CHECKPOINT_VERSION 1.3; `MAX_CONCURRENT==5`), stdlib/offline без циклов, детерминизм, reachability (6 verb'ов), CLI-surface.
 
 **Финал: engine 428, bench 96, golden PASSED, determinism byte-identical, 0 регрессий. Готово к релизу v1.7.0.**
+
+
+---
+
+# v1.8.0 — H8 / H9 (второй заход)
+
+Baseline v1.8.0: engine 428 + bench 96. Итог: **engine 453 (+25), bench 96**,
+golden PASSED, determinism byte-identical, 0 регрессий. Оба REQ: per-REQ ревью в
+чистом контексте.
+
+## H8 — Ship-gate агрегатор (`shipcheck`, движок)
+**Куда:** `engine/shipgate.py` (новый), `engine/profiles.py` (`citation_density_min`), `engine/cli.py` (`shipcheck`). **Статус:** 🟩 принято (ревью NO-GO→GO после remediation)
+
+**Реализация:** read-only `check()` собирает `PASS/WARN/FAIL` + breakdown из
+батареи v1.7.0. Блокирующие: quote-integrity (own-finding, который бы отгрузился),
+retracted-cite, citation-density < порога профиля, пустой отчёт. Warning: numeric,
+instruction-coverage, retracted-в-библиографии. Пороги из `profiles` (H7).
+
+**Remediation (ревью, закрыто системно):** MAJOR-1 completeness считал только
+findings → debunk из корректировок = ложный NO-GO → ключ на `shipped` (findings OR
+corrections). MAJOR-2 citation-density смотрел truthiness `c.sources` → ложный PASS
+на висячем id → считать процитированным только резолвящийся источник (зеркало
+`report._cites`). MINOR: quote-block scoped на would-ship own-findings; numeric/
+instruction-coverage scoped на shipped; retracted-в-библиографии → WARN.
+
+| AC | Критерий | Тест | Статус |
+|----|----------|------|--------|
+| AC8.1 | Агрегирует ≥5 проверок в один вердикт+breakdown | `test_h8_shipgate.py::Ac81AggregatesTest`, `Ac81MirrorReportShipSetTest` | 🟩 |
+| AC8.2 | Блокирующие (quote-block, retracted-cite) → FAIL | `...::Ac82BlockingFailTest` | 🟩 |
+| AC8.3 | numeric/instruction → WARN, не FAIL | `...::Ac83WarnNotFailTest` | 🟩 |
+| AC8.4 | citation-density < порога профиля (резолвящиеся источники) → FAIL | `...::Ac84CitationDensityTest`, `Ac81...::test_dangling_source_id_fails_citation_density` | 🟩 |
+| AC8.5 | read-only + детерминизм; report не импортирует shipgate | `...::Ac85ReadOnlyDeterministicTest` | 🟩 |
+| AC8.E2E | `engine shipcheck`: чистый → PASS | `...::Ac8E2ESubprocessTest` | 🟩 |
+
+## H9 — Stance-target группировка (`claimsmatrix`, движок)
+**Куда:** `Claim.stance_target: Optional[str]` (drop-when-None), `engine/reconcile.py` (новый), `engine/cli.py` (`claimsmatrix`). **Статус:** 🟩 принято (ревью GO + honesty-remediation)
+
+**Реализация:** LLM ставит `stance_target`; движок детерминированно группирует и
+сводит: `consensus` (все VERIFIED) / `refuted` (все FALSE) / `contradicted` (V+F) /
+`inconclusive` (только мнения) / `disputed` (решающее + мнения); канонические
+значения (digit-keys) + флаг `numeric_divergence`.
+
+**Remediation (ревью, 2 honesty-MAJOR):** all-FALSE больше не «disputed», а `refuted`;
+одни мнения → `inconclusive`; «consensus» вердиктов не прячет расхождение чисел
+(`numeric_divergence`); `numbers` дедуплицируются по digit-key (чинит false-split);
+публичный seam `numeric.number_tokens`/`digit_key` (снят coupling на приватный helper).
+
+| AC | Критерий | Тест | Статус |
+|----|----------|------|--------|
+| AC9.1 | `stance_target` Optional, drop-when-None | `test_h9_reconcile.py::Ac91ByteIdentityTest` | 🟩 |
+| AC9.2 | Группировка по stance_target (без ключа — вне матрицы) | `...::Ac92GroupingTest` | 🟩 |
+| AC9.3 | Вердикты consensus/refuted/contradicted/inconclusive/disputed | `...::Ac93ReconciliationTest` | 🟩 |
+| AC9.4 | Канонические значения + numeric_divergence | `...::Ac94QuantifiedValuesTest`, `Ac93NumericDivergenceTest` | 🟩 |
+| AC9.5 | Детерминизм; read-only; report не импортирует reconcile | `...::Ac95ReadOnlyDeterministicTest` | 🟩 |
+
+## Итог v1.8.0
+Verb'ы теперь: 8 новых read-only (v1.7.0: quotecheck/numcheck/independence/retraction/
+profile/instrcheck; v1.8.0: shipcheck/claimsmatrix). Reachability-guard зелёный.
+Pre-release ревью (чистый контекст): **GO** — 0 critical/major/minor, 2 non-blocking observation (quote-block сигнал scoped на own-findings — intended по AC; косметическая асимметрия scope numeric/instrcov — warning-level). Mirror-fidelity, байт-идентичность (CHECKPOINT_VERSION 1.3), детерминизм, reachability, ацикличность импортов — подтверждены. 453/453. Готово к релизу v1.8.0.
