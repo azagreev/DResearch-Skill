@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-07-20
+
+Reuse sweep porting seven patterns from hyperresearch (jordan-gibbs), each closing a recognised DRS gap while preserving the stdlib-only + deterministic + offline invariant. Reuse analysis in `docs/HYPERRESEARCH_REUSE.md`; full REQ->AC->test traceability in `docs/TRACE_HYPERRESEARCH.md`. Engine tests 371 -> 428, bench 96; golden-corpus PASSED; determinism byte-identical; 0 regressions. Per-REQ reviews (H1/H2/H3) + pre-release review (clean context): GO. Six new read-only CLI verbs form a verification battery.
+
+### Added
+- **Mechanical quote-integrity gate** (H1, `engine/quoteintegrity.py`, `engine quotecheck`): a claim's verbatim quote must appear in the cited source at its citation_span; an own-finding with an unbacked quote is dropped from the report (its text never echoed). Scoped to citation_spans-bearing claims -> legacy/golden byte-identical. Debunks (corrections) are never suppressed.
+- **Computed source independence** (H2, `engine/independence.py`, `engine independence`): union-find clusters syndicated/near-duplicate sources, each scored 1/cluster_size into the independence component (weight 0.20) -> lower composite/tier/confidence, no ladder rewrite. `consensus_strength` (five reprints ~= one vote). `resolve_conflict` gains an independence tiebreaker (fires only when both sides are scored). Opt-in verb; run_pipeline/golden untouched.
+- **Retraction flag-and-veto** (H3, `engine/retraction.py`, `engine retraction`): `Source.retracted` (Optional -> drops from serialization when None). A retracted source is stripped from BOTH support and contradiction in `classify_claim` unless the claim acknowledges the retraction. en+ru language detector; hot-path veto keys on the flag only.
+- **Numeric-consistency audit** (H6, `engine/numeric.py`, `engine numcheck`): flags claim numbers not traceable to a cited source (digit-sequence match, span-aware). Read-only; report unaffected.
+- **Scale-as-config-profile** (H7, `engine/profiles.py`, `engine profile`): scale knobs + gate thresholds as a frozen dataclass with depth built-ins, `extends`-overlay, ignore-unknown, golden-pinned defaults. `plan.MAX_CONCURRENT` now sourced from the default profile (value 5).
+- **Instruction-coverage audit** (H5, `engine/instrcov.py`, `engine instrcheck`): flags acceptance-criteria/scope items no finding addresses (term-overlap). The dialectic-critic stays a semantic review pass in the agent layer (engine stays deterministic).
+- **Patch-never-regenerate discipline** (H4, `SKILL.md` + structural guard test): post-factcheck edits are tool-locked to [Read, Edit], per-hunk; findings that don't fit escalate (`policy.TRIGGER_REVISION`); an unapplied critical blocks ship.
+
+### Changed
+- **`factcheck.resolve_conflict`** now documents+applies the full order Tier > freshness > independence > quantity (closing the SKILL.md<->code divergence); independence tiebreaker is a no-op on unscored legacy data.
+
 ## [1.6.0] - 2026-07-20
 
 Reuse sweep porting three high-value patterns from OpenResearcher (TIGER-AI-Lab), each closing a recognised gap. Reuse analysis in `docs/OPENRESEARCHER_REUSE.md`; full REQ->AC->test traceability in `docs/TRACE_OPENRESEARCHER.md`. Engine tests 353 -> 371, bench 79 -> 96; golden-corpus PASSED; determinism byte-identical; 0 regressions. Pre-release review (clean context): GO.

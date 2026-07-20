@@ -6,7 +6,7 @@ deterministically resolves conflicts and finalizes the 6-category verdict +
 confidence + status, so the same evidence always yields the same verdict.
 
 Conflict resolution follows source_authority_framework.md (Tier S > Tier A >
-freshness > quantity). The 6 categories are factcheck_system.md §4.1.
+freshness > independence > quantity). The 6 categories are factcheck_system.md §4.1.
 stdlib-only. Python >= 3.10.
 """
 
@@ -15,6 +15,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Dict, List, Optional
 
+from . import retraction
 from .freshness import parse_iso
 from .model import Claim, ClaimCategory, ClaimStatus, Source, Tier
 
@@ -43,8 +44,8 @@ def resolve_conflict(
     contradicting: List[Source],
     now_utc: Optional[str] = None,  # reserved; relative comparison needs no clock
 ) -> Resolution:
-    """Decide which side wins by: max tier, then freshness, then count; an
-    irreducible tie is DISPUTED. `now_utc` is accepted for signature symmetry but
+    """Decide which side wins by: max tier, then freshness, then summed
+    independence, then count; an irreducible tie is DISPUTED. `now_utc` is accepted for signature symmetry but
     not required (freshness here is a relative date comparison).
     """
     if not supporting and not contradicting:
@@ -65,6 +66,21 @@ def resolve_conflict(
     con_fresh = _newest(contradicting)
     if sup_fresh and con_fresh and sup_fresh != con_fresh:
         return Resolution.SUPPORTED if sup_fresh > con_fresh else Resolution.CONTRADICTED
+
+    # Independence tiebreaker (source_authority_framework / SKILL.md:104:
+    # 'Tier S > Tier A > freshness > independence > quantity'). Syndicated
+    # reprints (low per-source independence) can't out-vote fewer genuinely
+    # independent sources. Fire ONLY when BOTH sides carry at least one scored
+    # independence value: otherwise a side could 'win' merely because the other
+    # was never scored (None), not on a real signal. Unscored legacy data has
+    # no values on either side -> no-op -> tier/freshness/count resolution is
+    # unchanged. A legitimate 0.0 counts as a signal (is not None), unlike `or`.
+    sup_vals = [s.scores.independence for s in supporting if s.scores.independence is not None]
+    con_vals = [s.scores.independence for s in contradicting if s.scores.independence is not None]
+    if sup_vals and con_vals:
+        sup_indep, con_indep = sum(sup_vals), sum(con_vals)
+        if sup_indep != con_indep:
+            return Resolution.SUPPORTED if sup_indep > con_indep else Resolution.CONTRADICTED
 
     if len(supporting) > len(contradicting):
         return Resolution.SUPPORTED
@@ -91,6 +107,17 @@ def classify_claim(
     """
     supporting = [sources_by_id[s] for s in claim.sources if s in sources_by_id]
     contradicting = [sources_by_id[s] for s in claim.contradicting_sources if s in sources_by_id]
+
+    # H3 retraction veto: a retracted source is unreliable in BOTH directions,
+    # so it can neither support NOR contradict a claim (unless the claim
+    # acknowledges the retraction, e.g. a debunk about it). Stripping it from
+    # supporting means a claim propped up only by retracted work collapses to
+    # UNVERIFIED; stripping it from contradicting means a discredited source
+    # can't push a valid claim to FALSE/OUTDATED. No source is retracted in
+    # legacy data (Source.retracted defaults None), so this is a no-op there.
+    if not retraction.acknowledges_retraction(claim):
+        supporting = [s for s in supporting if not retraction.is_retracted(s)]
+        contradicting = [s for s in contradicting if not retraction.is_retracted(s)]
 
     resolution = resolve_conflict(supporting, contradicting, now_utc)
     if resolution is Resolution.NO_EVIDENCE:

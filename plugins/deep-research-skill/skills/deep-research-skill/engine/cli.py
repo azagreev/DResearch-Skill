@@ -533,6 +533,147 @@ def _cmd_verify(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_quotecheck(args: argparse.Namespace) -> int:
+    """H1 — mechanical quote-integrity gate over a snapshot's claims.
+
+    JSON-in {snapshot}. For each claim carrying citation_spans, verify every
+    verbatim quote in the claim text appears in the cited source at the cited
+    line span. Read-only; the snapshot is not mutated. Unsupported quotes are
+    returned for audit (this JSON surface may echo them; the rendered report
+    never does).
+    """
+    from . import quoteintegrity
+    from .model import snapshot_from_dict
+
+    data = _read_input(args.input)
+    snapshot = snapshot_from_dict(data["snapshot"])
+    issues = quoteintegrity.check_snapshot(snapshot)
+    results = [
+        {"claim_id": cid, "unsupported_quotes": issues[cid]}
+        for cid in sorted(issues)
+    ]
+    _emit_json({
+        "results": results,
+        "summary": {"n_claims": len(snapshot.claims), "n_failed": len(results)},
+    })
+    return 0
+
+
+def _cmd_instrcheck(args: argparse.Namespace) -> int:
+    """H5 — instruction-coverage audit (mechanical instruction-critic).
+
+    JSON-in {snapshot}. Flags acceptance-criteria / scope items no finding
+    addresses (zero significant-term overlap with any claim or cluster
+    title). Read-only, warning-level; the report is unaffected.
+    """
+    from . import instrcov
+    from .model import snapshot_from_dict
+
+    data = _read_input(args.input)
+    snapshot = snapshot_from_dict(data["snapshot"])
+    uncovered = instrcov.uncovered_criteria(snapshot)
+    n_items = len(snapshot.task_frame.acceptance_criteria) + len(snapshot.task_frame.scope)
+    _emit_json({
+        "uncovered": uncovered,
+        "summary": {"n_items": n_items, "n_uncovered": len(uncovered)},
+    })
+    return 0
+
+
+def _cmd_profile(args: argparse.Namespace) -> int:
+    """H7 — resolve a scale profile (named built-in + optional overrides).
+
+    JSON-in {name?, overrides?}. Returns the resolved Profile as a dict:
+    scale knobs + gate thresholds that used to live only in SKILL.md prose.
+    `overrides` may carry `extends` and any Profile field; unknown keys are
+    ignored.
+    """
+    from dataclasses import asdict
+    from . import profiles
+
+    data = _read_input(args.input)
+    prof = profiles.get_profile(data.get("name", "standard"))
+    overrides = data.get("overrides")
+    if overrides:
+        prof = profiles.from_mapping(overrides, base=prof)
+    _emit_json({"profile": asdict(prof)})
+    return 0
+
+
+def _cmd_retraction(args: argparse.Namespace) -> int:
+    """H3 — flag retracted sources from their content (retraction language).
+
+    JSON-in {sources}. Sets retracted=True on any source whose content carries
+    retraction-notice language (only where the flag is unset). Returns the
+    sources plus the ids newly flagged. The veto itself runs inside factcheck
+    (a retracted source is stripped from a claim's support unless the claim
+    acknowledges the retraction).
+    """
+    from . import retraction
+    from .model import _jsonable, _source_from
+
+    data = _read_input(args.input)
+    sources = [_source_from(s) for s in data.get("sources", [])]
+    flagged = retraction.mark_retractions(sources)
+    _emit_json({"sources": [_jsonable(s) for s in sources], "flagged": flagged})
+    return 0
+
+
+def _cmd_independence(args: argparse.Namespace) -> int:
+    """H2 — compute source independence and fold it into composite/tier.
+
+    JSON-in {sources, sim_threshold?, overwrite?, now?, claims?}. Clusters
+    syndicated/near-duplicate sources (union-find) and writes 1/cluster_size
+    into each source's independence component (only where unset, unless
+    overwrite), then re-derives the composite + tier. With `claims`, also
+    returns each claim's independence-weighted consensus_strength.
+    """
+    from . import independence, score
+    from .model import _claim_from, _jsonable, _source_from
+
+    data = _read_input(args.input)
+    sources = [_source_from(s) for s in data.get("sources", [])]
+    threshold = float(data.get("sim_threshold", independence.DEFAULT_SIM_THRESHOLD))
+    independence.apply_independence(sources, sim_threshold=threshold,
+                                    overwrite=bool(data.get("overwrite", False)))
+    score.score_sources(sources, data.get("now"))
+    out = {"sources": [_jsonable(s) for s in sources]}
+    if "claims" in data:
+        by_id = {s.id: s for s in sources}
+        claims = [_claim_from(c) for c in data["claims"]]
+        out["consensus"] = [
+            {"claim_id": c.id, "consensus_strength": independence.consensus_strength(c, by_id)}
+            for c in claims
+        ]
+    _emit_json(out)
+    return 0
+
+
+def _cmd_numcheck(args: argparse.Namespace) -> int:
+    """H6 — numeric-consistency audit over a snapshot's claims.
+
+    JSON-in {snapshot}. For each sourced, number-bearing claim, flag numbers
+    whose digit sequence is not traceable to a cited source (within the cited
+    span, if any). Read-only, warning-level; the snapshot is not mutated and
+    the report is unaffected.
+    """
+    from . import numeric
+    from .model import snapshot_from_dict
+
+    data = _read_input(args.input)
+    snapshot = snapshot_from_dict(data["snapshot"])
+    issues = numeric.check_snapshot(snapshot)
+    results = [
+        {"claim_id": cid, "untraceable_numbers": issues[cid]}
+        for cid in sorted(issues)
+    ]
+    _emit_json({
+        "results": results,
+        "summary": {"n_claims": len(snapshot.claims), "n_flagged": len(results)},
+    })
+    return 0
+
+
 def _cmd_plan(args: argparse.Namespace) -> int:
     """AC15-3 — validate + layer a sub-task DAG.
 
@@ -611,6 +752,12 @@ CAPABILITY_VERBS: dict = {
     "doctor": "doctor",
     "hook": "hook",
     "verify": "verify",
+    "quotecheck": "quotecheck",
+    "numcheck": "numcheck",
+    "independence": "independence",
+    "retraction": "retraction",
+    "profile": "profile",
+    "instrcheck": "instrcheck",
     "plan": "plan",
     "gate": "gate",
 }
@@ -737,6 +884,30 @@ def build_parser() -> argparse.ArgumentParser:
     verify = sub.add_parser("verify", help="independent re-verification of a snapshot's claims (disagreement report)")
     _add_input(verify)
     verify.set_defaults(func=_cmd_verify)
+
+    quotecheck = sub.add_parser("quotecheck", help="mechanical quote-integrity gate: each verbatim quote must exist in the cited source at its line span")
+    _add_input(quotecheck)
+    quotecheck.set_defaults(func=_cmd_quotecheck)
+
+    numcheck = sub.add_parser("numcheck", help="numeric-consistency audit: each claim number must be traceable to a cited source")
+    _add_input(numcheck)
+    numcheck.set_defaults(func=_cmd_numcheck)
+
+    independence = sub.add_parser("independence", help="compute source independence (syndication != consensus) -> composite/tier + consensus_strength")
+    _add_input(independence)
+    independence.set_defaults(func=_cmd_independence)
+
+    retraction = sub.add_parser("retraction", help="flag retracted sources from content; retracted sources are vetoed as support in factcheck")
+    _add_input(retraction)
+    retraction.set_defaults(func=_cmd_retraction)
+
+    profile = sub.add_parser("profile", help="resolve a scale profile (named built-in + overrides/extends) -> scale knobs + gate thresholds")
+    _add_input(profile)
+    profile.set_defaults(func=_cmd_profile)
+
+    instrcheck = sub.add_parser("instrcheck", help="instruction-coverage audit: flag acceptance-criteria/scope items no finding addresses")
+    _add_input(instrcheck)
+    instrcheck.set_defaults(func=_cmd_instrcheck)
 
     plan = sub.add_parser("plan", help="validate + layer a sub-task DAG (status/errors/layers/ready)")
     _add_input(plan)

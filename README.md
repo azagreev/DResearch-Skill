@@ -2,7 +2,7 @@
 
 > **Навык глубокого исследования для Claude Code (testing release).** Многофазный workflow с cost-first выполнением, evidence-based отчётами, anti-hallucination протоколом и прозрачным confidence scoring.
 
-**Версия:** 1.6.0 | **Лицензия:** MIT | **Язык:** русский (отчёт: ru/en через `TaskFrame.language`)
+**Версия:** 1.7.0 | **Лицензия:** MIT | **Язык:** русский (отчёт: ru/en через `TaskFrame.language`)
 **Автор:** Andrey Zagreev | **Обратная связь:** [@zagreev](https://t.me/zagreev)
 
 ---
@@ -12,13 +12,22 @@
 - **7-фазный workflow**: Анализ задачи → Декомпозиция → Сбор → Верификация → Синтез → Вывод → Приёмка
 - **Cost-First выполнение**: 4-уровневая иерархия инструментов — начинай бесплатно, эскалируй только при необходимости
 - **Evidence-Based отчёты**: каждое утверждение имеет verifiable citation с привязкой к строкам источника (【S†L{a}-L{b}】), каждый источник — tier
-- **Anti-Hallucination протокол**: zero tolerance — FactCheck Agent ветирует каждый факт
+- **Anti-Hallucination протокол**: zero tolerance — FactCheck ветирует каждый факт; механический quote-integrity (дословные цитаты обязаны существовать в источнике) и retraction-veto (отозванные источники исключаются)
 - **4 уровня глубины**: Quick (30 мин) → Standard (1–2 ч) → Deep (3–5 ч) → Exhaustive (5+ ч)
 - **Confidence Scoring**: шкала 1–5 с визуальными индикаторами для каждого утверждения
 - **Checkpoint Recovery**: адаптивный heartbeat (2–10 мин) + checkpoint на каждом gate — откат к последнему gate, а не к нулю
 - **Cost & Cache телеметрия**: захват cache-сигналов, `cache_hit_rate`, `bundle_hash`, именованные границы компактизации, CLI `cost`
 - **Typed Collection Seam**: единый контракт `CollectionResult` над любым провайдером (web_search/Jina/Firecrawl/…) со snippet-cap и risk_class
-- **CI-регрессия**: 467 юнит-тестов (371 engine + 96 bench), golden corpus, determinism-gate, опциональные cost/latency-пороги
+- **CI-регрессия**: 524 юнит-теста (428 engine + 96 bench), golden corpus, determinism-gate, опциональные cost/latency-пороги
+
+### Новое в 1.7.0
+
+Портировано из [hyperresearch](https://github.com/jordan-gibbs/hyperresearch) (jordan-gibbs) — анализ переиспользования в [`docs/HYPERRESEARCH_REUSE.md`](docs/HYPERRESEARCH_REUSE.md), сквозная трассировка REQ→критерий→тест в [`docs/TRACE_HYPERRESEARCH.md`](docs/TRACE_HYPERRESEARCH.md). 6 новых read-only CLI-verb'ов образуют верификационную батарею.
+
+- **Механический quote-integrity** (`engine quotecheck`): дословная цитата claim'а обязана присутствовать в цитируемом источнике на указанных строках 【S†L{a}-L{b}】; own-finding с непроверенной цитатой не попадает в отчёт. + numeric-consistency (`numcheck`): числа трассируемы к источнику.
+- **Syndication ≠ consensus** (`independence`): union-find кластеризует перепечатки/near-duplicate, каждая получает 1/cluster_size в composite (вес 0.20) → ниже tier/confidence; пять копий одной новости ≈ один голос. Тайбрейкер факт-чека учитывает independence.
+- **Retraction-veto** (`retraction`): отозванный источник (флаг/детектор языка отзыва) исключается из support И contradicting в факт-чеке.
+- **Scale-as-config-profile** (`profile`): scale-кнобы и пороги гейтов как машиночитаемый профиль (built-in по глубине, `extends`); `plan.MAX_CONCURRENT` из профиля. **Instruction-coverage** (`instrcheck`): пункты acceptance_criteria/scope без покрытия. **Patch-never-regenerate** дисциплина ревизии (SKILL.md + guard).
 
 ### Новое в 1.6.0
 
@@ -152,7 +161,7 @@ DResearch-Skill/                              # маркетплейс (коре
 ├── plugins/
 │   └── deep-research-skill/
 │       ├── .claude-plugin/
-│       │   └── plugin.json                   # манифест плагина (version: 1.6.0)
+│       │   └── plugin.json                   # манифест плагина (version: 1.7.0)
 │       └── skills/
 │           └── deep-research-skill/          # self-contained навык
 │               ├── SKILL.md                  # точка входа (7-фазный workflow)

@@ -234,6 +234,7 @@ class Source:
     time_sensitive: bool = False    # drives staleness re-verify on resume
     scores: ScoreComponents = field(default_factory=ScoreComponents)
     metadata: Dict[str, Any] = field(default_factory=dict)
+    retracted: Optional[bool] = None  # H3: True = source retracted (hard-vetoed as support); None (default) drops from serialization -> byte-identical
 
 
 @dataclass
@@ -393,6 +394,7 @@ def _source_from(d: Dict[str, Any]) -> Source:
         time_sensitive=bool(d.get("time_sensitive", False)),
         scores=_scores_from(d.get("scores", {})),
         metadata=dict(d.get("metadata", {})),
+        retracted=d.get("retracted"),
     )
 
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Dict, List, Optional
 
-from . import ingest
+from . import ingest, quoteintegrity
 from .model import Claim, ClaimCategory, Snapshot, Source, _is_citation_span, get_category_labels
 from .policy import Disposition, ReportMode, disposition
 
@@ -41,6 +41,8 @@ _LABELS = {
         "corrections": "Опровергнуто / коррекции",
         "sources": "Источники",
         "clamp_note": "Скорректированные цитатные диапазоны (clamp)",
+        "quote_fail_note": "Заблокировано проверкой дословности цитат (quote-integrity)",
+        "quote_fail_line": "claim {cid}: дословная цитата не подтверждена источником ({srcs})",
         "footer": ("Выводов: {findings} · коррекций: {corrections} · "
                    "исключено-в-память: {excluded} · на пересмотр: {revision}"),
     },
@@ -52,6 +54,8 @@ _LABELS = {
         "corrections": "Refuted / corrections",
         "sources": "Sources",
         "clamp_note": "Adjusted citation spans (clamped)",
+        "quote_fail_note": "Blocked by quote-integrity check",
+        "quote_fail_line": "claim {cid}: verbatim quote not supported by source ({srcs})",
         "footer": ("Findings: {findings} · corrections: {corrections} · "
                    "excluded-to-memory: {excluded} · flagged-for-revision: {revision}"),
     },
@@ -178,11 +182,31 @@ def render_markdown(
     clamp_notes = resolve_citation_spans(snapshot.claims, sources_by_id)
     disp = {c.id: disposition(c, report_mode) for c in snapshot.claims}
 
+    # H1 quote-integrity gate: a claim whose verbatim quote is not backed by
+    # the cited source at the cited span never ships (any mode). Scoped to
+    # claims carrying citation_spans (R2 opt-in), so no-span claims are
+    # untouched and output stays byte-identical when nothing fails. The
+    # unverified quote text is deliberately NOT echoed — only the claim id.
+    quote_issues = quoteintegrity.check_snapshot(snapshot)
+
+    # Corrections (debunks: EXTERNAL_CLAIM + FALSE -> INCLUDE_AS_CORRECTION)
+    # quote the REFUTED assertion verbatim; that quote is the thing being
+    # debunked, not a fact we assert, and its provenance is contradicting_
+    # sources, not sources. So the quote-integrity gate must NOT suppress a
+    # correction — it protects our OWN asserted findings only.
     corrections = [c for c in snapshot.claims if disp[c.id] is Disposition.INCLUDE_AS_CORRECTION]
-    findings = [
+    _finding_candidates = [
         c for c in snapshot.claims
         if disp[c.id] in _INCLUDED and disp[c.id] is not Disposition.INCLUDE_AS_CORRECTION
     ]
+    # A finding whose verbatim quote is not backed by the cited source at the
+    # cited span never ships (H1). Intersect with the would-be-included set so
+    # the note lists only claims a reader would otherwise have seen (no noise
+    # for claims already excluded by disposition). Order follows snapshot.claims
+    # (deterministic).
+    quote_blocked = [c for c in _finding_candidates if c.id in quote_issues]
+    _blocked_ids = {c.id for c in quote_blocked}
+    findings = [c for c in _finding_candidates if c.id not in _blocked_ids]
 
     question = snapshot.task_frame.question if snapshot.task_frame else snapshot.run_id
     lines: List[str] = [f"# {labels['title']}: {question}"]
@@ -249,5 +273,14 @@ def render_markdown(
         lines.append(f"> ⚠️ _{labels['clamp_note']}_")
         for note in clamp_notes:
             lines.append(f"> - {note}")
+
+    # H1: surface quote-integrity blocks — claim id + cited sources only,
+    # never the unverified quote text. Byte-identical when nothing failed.
+    if quote_blocked:
+        lines.append("")
+        lines.append(f"> ⚠️ _{labels['quote_fail_note']}_")
+        for claim in quote_blocked:
+            srcs = ", ".join(claim.sources)
+            lines.append("> - " + labels['quote_fail_line'].format(cid=claim.id, srcs=srcs))
 
     return "\n".join(lines)

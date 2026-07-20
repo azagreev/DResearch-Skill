@@ -95,6 +95,7 @@ def source_from_raw(raw: Dict[str, Any], source_id: str, now_utc: str) -> Source
         scores=_components(raw),
         metadata=dict(raw.get("metadata") or {}),
         trust=trust,
+        retracted=raw.get("retracted"),
     )
 
 

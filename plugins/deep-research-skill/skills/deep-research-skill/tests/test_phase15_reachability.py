@@ -40,7 +40,7 @@ NOW = "2026-06-30T00:00:00Z"
 CURATED_CAPABILITIES = (
     "collect", "ingest", "rank", "score", "factcheck", "cluster", "memory",
     "eval", "cost", "compact", "checkpoint", "resume", "rescore", "report",
-    "run", "doctor", "hook", "verify", "plan", "gate",
+    "run", "doctor", "hook", "verify", "quotecheck", "numcheck", "independence", "retraction", "profile", "instrcheck", "plan", "gate",
 )
 
 # Skill root (parent of tests/) is the cwd `python -m engine` must run from.

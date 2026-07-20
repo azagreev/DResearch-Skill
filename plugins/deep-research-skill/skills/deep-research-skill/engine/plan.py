@@ -26,10 +26,13 @@ from __future__ import annotations
 from enum import Enum
 from typing import Dict, List, Tuple
 
+from . import profiles
 from .model import SubTask, SubTaskStatus
 
 # Max sub-tasks that may run concurrently in one parallel level (AC10-5).
-MAX_CONCURRENT = 5
+# Sourced from the scale profile (H7) so scale knobs live in one
+# machine-readable place; the default profile pins the historical value (5).
+MAX_CONCURRENT = profiles.DEFAULT.max_concurrent
 
 
 class EdgeKind(str, Enum):
