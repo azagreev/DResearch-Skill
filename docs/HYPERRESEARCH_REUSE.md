@@ -16,6 +16,9 @@ checkpoint/resume (`engine/state.py`), cross-run vault на SQLite+FTS5
 набор механик, закрывающих **реальные** пробелы DRS и укладывающихся в наш
 инвариант: **stdlib-only, детерминизм, offline**.
 
+> **Статус:** H1–H7 отгружены в **v1.7.0** (см. CHANGELOG и [TRACE_HYPERRESEARCH.md](TRACE_HYPERRESEARCH.md)).
+> Ниже — исходный анализ; в конце документа — **Backlog** невзятых кандидатов на v1.8.0+.
+
 ## Матрица переиспользования
 
 ### Портируем — движок (реальный пробел + stdlib + детерминизм)
@@ -127,3 +130,60 @@ evidence позволяет); dialectic-критик ищет неразобра
 checkpoint/resume, cross-run SQLite memory, determinism-gate + golden corpus +
 byte-identical replay, typed collection seam + trust-fence, 5-компонентный
 auditable composite score, RRF+tier fusion, prose-only fallback mode.
+
+
+---
+
+## Backlog / deferred (кандидаты на v1.8.0+)
+
+Невзятое в v1.7.0 из тех же трёх агентских разборов, отранжированное по
+ценности × fit к инварианту (stdlib-only / детерминизм / offline).
+
+### Сильные (рекомендованы на v1.8.0)
+
+| ID | Что | Откуда | Пробел DRS | Ценность / риск |
+|----|-----|--------|-----------|-----------------|
+| **H8** | Ship-gate агрегатор (`shipcheck`): один GO/NO-GO из quote-integrity (H1) + numeric (H6) + instruction-coverage (H5) + retraction (H3) + citation-density + heading/length; пороги из профиля (H7) | `runs.verify_run` | 6 аудит-verb'ов разрознены; нет единого «можно ли отгружать» | HIGH / низкий (композиция готового, read-only, детерминизм) |
+| **H9** | Stance-target группировка claim'ов: мета-вид «эти утверждения о ОДНОМ объекте», split по позиции + количественные значения (консенсус vs противоречие) | `claims.group_by_target` / `literature_matrix` | `cluster.py` группирует по тексту, нет реконсиляции противоречий для синтеза | MED-HIGH / средний |
+
+### Второй эшелон
+
+| ID | Что | Заметка |
+|----|-----|---------|
+| **H10** | Renormalize-on-missing в composite (не штрафовать за отсутствующий компонент, ренормировать веса) | `quality.py`; **меняет scoring-семантику** → сдвиг golden-tier'ов, нужен opt-in / re-pin |
+| **H11** | Width/cluster-coverage критик: флагать evidence-кластеры с findings, отсутствующие в отчёте | третий адверсариальный критик, механический; есть `EvidenceCluster` |
+| **H12** | Verbatim-prompt anchoring + scaffold-lint (точный промпт как «евангелие», перечитывается каждой фазой) | анти-context-rot; skill-слой + guard |
+| **H13** | Offline citation-authority: percentile авторитетности из статического citations-JSON от скилла (+ retraction из того же фида) | расширяет H3; stdlib+offline через данные caller'а |
+
+### Крупные рефакторы / diminishing returns
+
+- **H14 — Phase-loads-on-demand:** разбить 7 фаз SKILL.md на отдельные skill-файлы,
+  грузящиеся при исполнении фазы (урок V7→V8 hyperresearch). Крупный рефактор.
+- **Triple-draft→synthesize**, **depth/corpus-critic** — оркестрационная методология,
+  преимущественно семантическая (LLM); слабо ложится на детерминированный движок.
+
+### Спецификации рекомендованных
+
+**H8 — Ship-gate агрегатор.** Куда: новый `engine/shipgate.py` + verb `shipcheck`
+(read-only; отчёт не трогается → байт-идентичность тривиальна). Суть: чистая
+функция собирает вердикт `PASS/WARN/FAIL` + breakdown из детерминированных
+проверок. Блокирующие (FAIL): заблокированная H1-цитата у own-finding;
+citation-density findings ниже порога профиля; отгружаемый claim цитирует
+retracted-источник без acknowledgment. Warning: нетрассируемые числа (H6),
+непокрытые критерии (H5). Пороги — из `profiles` (H7), что даёт профилю реального
+потребителя. AC: (8.1) агрегирует ≥5 проверок в один вердикт; (8.2) H1-блок или
+retracted-cite → FAIL; (8.3) numeric/instruction → WARN, не FAIL; (8.4)
+citation-density < порога профиля → FAIL; (8.5) read-only + детерминизм, отчёт
+неизменен; (8.E2E) `engine shipcheck`: чистый snapshot → PASS, «грязный» → FAIL с
+причинами.
+
+**H9 — Stance-target группировка.** Куда: `Claim.stance_target: Optional[str]`
+(drop-when-None → байт-идентичность, как citation_spans/retracted), новый
+`engine/reconcile.py` + verb `claimsmatrix` (read-only). Суть: LLM проставляет
+`stance_target` (ключ группировки), движок детерминированно группирует и
+реконсилирует: `contradicted`, если в группе противоположные вердикты
+(VERIFIED↔FALSE) или взаимные `contradicting_sources`; иначе `consensus`; плюс
+surфейс количественных значений (переиспользуя `numeric._number_tokens`). AC:
+(9.1) поле Optional, drop-when-None; (9.2) группировка по stance_target; (9.3)
+реконсиляция consensus/contradiction; (9.4) количественные значения по target;
+(9.5) детерминизм, read-only, отчёт неизменен.
