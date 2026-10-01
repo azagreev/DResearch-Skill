@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="330" viewBox="0 0 1200 330" role="img" aria-labelledby="title desc">
+  <title id="title">От утверждения к доказательству</title>
+  <desc id="desc">Условное утверждение сопоставляется с источником, который его поддерживает, и источником, который ему противоречит. Разногласие остаётся видимым в отчёте.</desc>
+
+  <rect width="1200" height="330" rx="20" fill="#F3F0E7"/>
+  <path d="M44 54H1156" stroke="#D9D7CD" stroke-width="1"/>
+  <text x="56" y="39" fill="#A44F3C" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" letter-spacing="2">РЕЕСТР ДОКАЗАТЕЛЬСТВ / СХЕМА ПРОВЕРКИ</text>
+
+  <g>
+    <rect x="56" y="79" width="276" height="191" rx="12" fill="#FFFEFA" stroke="#D9D7CD" stroke-width="2"/>
+    <rect x="56" y="79" width="8" height="191" rx="4" fill="#A44F3C"/>
+    <text x="82" y="115" fill="#65736F" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" letter-spacing="1">01 / УТВЕРЖДЕНИЕ</text>
+    <text x="82" y="163" fill="#203A3A" font-family="Georgia, 'Times New Roman', serif" font-size="31">Вывод A-07</text>
+    <path d="M82 181H302" stroke="#E2E0D7" stroke-width="2"/>
+    <text x="82" y="213" fill="#465A58" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="20">Краткая формулировка</text>
+    <text x="82" y="241" fill="#465A58" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="20">того, что нужно проверить</text>
+  </g>
+
+  <path d="M332 172H382" stroke="#A44F3C" stroke-width="3"/>
+  <path d="M372 164L382 172L372 180" fill="none" stroke="#A44F3C" stroke-width="3"/>
+
+  <g>
+    <rect x="388" y="79" width="411" height="191" rx="12" fill="#FFFEFA" stroke="#D9D7CD" stroke-width="2"/>
+    <text x="414" y="115" fill="#65736F" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" letter-spacing="1">02 / ИСТОЧНИКИ</text>
+
+    <rect x="414" y="132" width="359" height="49" rx="8" fill="#E7EFE7"/>
+    <circle cx="435" cy="156" r="7" fill="#39775D"/>
+    <text x="454" y="163" fill="#244C3B" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="20" font-weight="600">S1 · подтверждает</text>
+    <text x="735" y="163" text-anchor="end" fill="#557466" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">источник</text>
+
+    <rect x="414" y="193" width="359" height="49" rx="8" fill="#F5E7E1"/>
+    <circle cx="435" cy="217" r="7" fill="#B85740"/>
+    <text x="454" y="224" fill="#7E3D31" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="20" font-weight="600">S2 · оспаривает</text>
+    <text x="735" y="224" text-anchor="end" fill="#956052" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18">источник</text>
+  </g>
+
+  <path d="M799 172H849" stroke="#39775D" stroke-width="3"/>
+  <path d="M839 164L849 172L839 180" fill="none" stroke="#39775D" stroke-width="3"/>
+
+  <g>
+    <rect x="855" y="79" width="289" height="191" rx="12" fill="#203A3A"/>
+    <text x="882" y="115" fill="#C4D2C7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" letter-spacing="1">03 / В ОТЧЁТЕ</text>
+    <text x="882" y="161" fill="#FFFDF6" font-family="Georgia, 'Times New Roman', serif" font-size="27">Разногласие</text>
+    <text x="882" y="193" fill="#FFFDF6" font-family="Georgia, 'Times New Roman', serif" font-size="27">остаётся видимым</text>
+    <path d="M882 211H1117" stroke="#637C71" stroke-width="1"/>
+    <text x="882" y="244" fill="#DBE5D9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="19">Источники · уверенность</text>
+  </g>
+
+  <path d="M56 297H1144" stroke="#D9D7CD" stroke-width="1"/>
+  <text x="56" y="319" fill="#7B8580" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16" letter-spacing="1">СОДЕРЖИМОЕ КАРТОЧЕК УСЛОВНОЕ</text>
+  <text x="1144" y="319" text-anchor="end" fill="#7B8580" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16">УТВЕРЖДЕНИЕ → ИСТОЧНИКИ → ОТЧЁТ</text>
+</svg>

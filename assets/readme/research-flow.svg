@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-labelledby="title desc">
+  <title id="title">Этапы исследовательского процесса</title>
+  <desc id="desc">Четыре этапа: сформулировать вопрос и критерии, собрать источники, сверить утверждения, синтезировать и оформить отчёт.</desc>
+
+  <rect width="1200" height="300" rx="20" fill="#F3F0E7"/>
+  <text x="56" y="47" fill="#A44F3C" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" letter-spacing="2">ОТ ВОПРОСА К ОТЧЁТУ</text>
+  <path d="M56 65H1144" stroke="#D9D7CD" stroke-width="1"/>
+
+  <g>
+    <rect x="58" y="91" width="244" height="150" rx="12" fill="#FFFEFA" stroke="#D9D7CD" stroke-width="2"/>
+    <text x="82" y="126" fill="#A44F3C" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" letter-spacing="1">01</text>
+    <text x="82" y="165" fill="#203A3A" font-family="Georgia, 'Times New Roman', serif" font-size="28">Задать вопрос</text>
+    <text x="82" y="202" fill="#53635F" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="18">цель · рамки · критерии</text>
+  </g>
+
+  <path d="M302 166H338" stroke="#A44F3C" stroke-width="3"/>
+  <path d="M330 158L338 166L330 174" fill="none" stroke="#A44F3C" stroke-width="3"/>
+
+  <g>
+    <rect x="338" y="91" width="244" height="150" rx="12" fill="#FFFEFA" stroke="#D9D7CD" stroke-width="2"/>
+    <text x="362" y="126" fill="#A44F3C" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" letter-spacing="1">02</text>
+    <text x="362" y="165" fill="#203A3A" font-family="Georgia, 'Times New Roman', serif" font-size="28">Собрать</text>
+    <text x="362" y="202" fill="#53635F" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="18">источники по задаче</text>
+  </g>
+
+  <path d="M582 166H618" stroke="#A44F3C" stroke-width="3"/>
+  <path d="M610 158L618 166L610 174" fill="none" stroke="#A44F3C" stroke-width="3"/>
+
+  <g>
+    <rect x="618" y="91" width="244" height="150" rx="12" fill="#FFFEFA" stroke="#D9D7CD" stroke-width="2"/>
+    <text x="642" y="126" fill="#A44F3C" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" letter-spacing="1">03</text>
+    <text x="642" y="165" fill="#203A3A" font-family="Georgia, 'Times New Roman', serif" font-size="28">Сверить</text>
+    <text x="642" y="202" fill="#53635F" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="18">факты · цитаты · споры</text>
+  </g>
+
+  <path d="M862 166H898" stroke="#39775D" stroke-width="3"/>
+  <path d="M890 158L898 166L890 174" fill="none" stroke="#39775D" stroke-width="3"/>
+
+  <g>
+    <rect x="898" y="91" width="244" height="150" rx="12" fill="#203A3A"/>
+    <text x="922" y="126" fill="#D2DED3" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" letter-spacing="1">04</text>
+    <text x="922" y="165" fill="#FFFDF6" font-family="Georgia, 'Times New Roman', serif" font-size="26">Синтезировать</text>
+    <text x="922" y="202" fill="#D2DED3" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="18">выводы · ссылки</text>
+  </g>
+
+  <path d="M56 270H1144" stroke="#D9D7CD" stroke-width="1"/>
+  <text x="56" y="290" fill="#7B8580" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="16" letter-spacing="1">ДОСТУПНЫЕ ИНСТРУМЕНТЫ · КОНТРОЛЬНЫЕ ТОЧКИ · СВЕРКА КРИТЕРИЕВ</text>
+</svg>
